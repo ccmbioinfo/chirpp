@@ -4,6 +4,18 @@ import re
 from openpyxl import load_workbook
 
 def textFix(fileName, sheetName, textCol):
+    """
+        Corrects and saves the text in the specified column of an Excel sheet using GingerIt and regex.
+
+        Args:
+            fileName (str): Path to the Excel file.
+            sheetName (str): Name of the sheet containing the text column.
+            textCol (str): Name of the column containing the text to be checked.
+
+        Returns:
+            None
+    """
+    
     #Text parser
     parser = GingerIt()
 
@@ -23,17 +35,6 @@ def textFix(fileName, sheetName, textCol):
     sheet2 = book[sheetName]
 
     for index, row in df.iterrows():
-        """
-        Corrects and saves the text in the specified column of an Excel sheet using GingerIt and regex.
-
-        Args:
-            fileName (str): Path to the Excel file.
-            sheetName (str): Name of the sheet containing the text column.
-            textCol (str): Name of the column containing the text to be checked.
-
-        Returns:
-            None
-        """
         test = row[text_column]
         if isinstance(test, str):
             test = str(row[text_column]).lower()  # Convert to string to handle NaN values
