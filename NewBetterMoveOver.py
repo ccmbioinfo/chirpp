@@ -3,7 +3,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 from openpyxl.styles import NamedStyle
 
-def moveOver(fileName, sheetFrom, sheetTo):
+def move_over(fileName, sheetFrom, sheetTo):
     """
     Moves rows from one sheet to another in an Excel workbook based on specific criteria.
 
@@ -27,7 +27,7 @@ def moveOver(fileName, sheetFrom, sheetTo):
         The function utilizes the openpyxl library to manipulate Excel files.
 
     Example:
-        moveOver('data.xlsx', 'Sheet1', 'Sheet2')
+        move_over('data.xlsx', 'Sheet1', 'Sheet2')
     """
     filename = fileName
 

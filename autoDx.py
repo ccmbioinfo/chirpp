@@ -1,6 +1,6 @@
 import pandas
 
-def bodyParts(diagnosis):
+def body_parts(diagnosis):
     """
     Function that matches the injury with the corresponding bodypart.
 

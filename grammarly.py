@@ -3,7 +3,7 @@ from gingerit.gingerit import GingerIt
 import re
 from openpyxl import load_workbook
 
-def textFix(fileName, sheetName, textCol):
+def text_fix(fileName, sheetName, textCol):
     """
         Corrects and saves the text in the specified column of an Excel sheet using GingerIt and regex.
 
