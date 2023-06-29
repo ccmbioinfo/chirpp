@@ -19,7 +19,7 @@ def postprocess(
 ):
 
     """
-    Processes an Excel workbook by applying specific transformations on the data.
+    Post processes an Excel workbook
 
     This function iterates over rows of a selected sheet in the workbook. If specific conditions are met,
     it modifies the cell values in place. It also applies color fill to cells with None values in specific columns.
@@ -96,7 +96,7 @@ def postprocess(
 
     workbook.save(filename)
 
-process_workbook(
+postprocess(
     'C:/Users/alyssia naran/Downloads/no_highlight.xlsx', 'Sheet2',
     'S', 'U', 'V', 'AC', 'AD', 'AH', 'AJ', 'AO',
     14, 12, 21, 20, 29,
