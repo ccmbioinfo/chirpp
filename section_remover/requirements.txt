@@ -1,0 +1,7 @@
+# please only use the packages that you are actively importing
+spacy
+medspacy
+scispacy
+negspacy
+spacy_transformers
+pandas
