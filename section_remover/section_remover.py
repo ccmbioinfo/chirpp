@@ -62,5 +62,5 @@ class SectionRemover:
                 else:
                     continue
         clean_note = kept_sections + unclear_sections
-        clean_note = " ".join(clean_note)
+        clean_note = " ".join([str(note) for note in clean_note])
         return clean_note

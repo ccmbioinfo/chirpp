@@ -18,7 +18,7 @@ classification={
           "Body Fluid Exposure", "Ring Removal", "Multisystem Trauma - Penetrating", "Near Drowning", "Isolated Abdominal Trauma - Penetrating",
           "Isolated Chest Trauma - Penetrating", "Substance Withdrawal", "Electrical Injury", "Frostbite / Cold Injury",
           "Cardiac Arrest (Traumatic)", "Foreign Body in Eye"],
-    "include_cols":["Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon"],
+    "include_cols":["Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "File Time"],
     "use_unlabelled":True,
     "use_chirpp_column":True,
 }

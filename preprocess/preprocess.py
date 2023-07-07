@@ -37,15 +37,18 @@ class PreprocessForClassfication:
         """
         notes = []
         for file in tqdm(self.files[processed_col].tolist()):
-            dat = read_chirpp_excel_file(file)
-            notes.append(dat)
+            if pd.isna(file):
+                continue
+            else:
+                dat = read_chirpp_excel_file(file)
+                notes.append(dat)
         notes = pd.concat(notes).reset_index(drop=True).drop_duplicates()
         notes["label"] = 1  # this is only for classification of whether chirpp or not
         self.processed = notes
         return self
 
     def read_raw_notes(self, use_unlabelled, raw_col="raw_files", processed_col="processed_files",
-                       additional_columns=[]):
+                       additional_columns=[], filters=None):
         """
         read unprocessed Crystal notes and filter out note types specified above
         :param use_unlabelled: Whether to use the file if it does not have a corresponding manually labelled file
@@ -58,16 +61,20 @@ class PreprocessForClassfication:
         for processed, raw in tqdm(zip(self.files[processed_col].tolist(), self.files[raw_col].tolist())):
             if pd.isna(processed):
                 if use_unlabelled:
-                    dat = read_crystal_excel_file(raw, additional_columns)
-                    notes.append(dat)
+                    dat = read_crystal_excel_file(path=raw, additional_columns=additional_columns, filters=filters)
                 else:
                     continue
+            else:
+                dat = read_crystal_excel_file(path=raw, additional_columns=additional_columns, filters=filters)
+            notes.append(dat)    
+            
         notes = pd.concat(notes).reset_index(drop=True).drop_duplicates()
         notes = notes[notes["Note Type"].isin(self.note_types)]
         self.raw = notes
         return self
 
-    def merge_notes(self, section_remover=None, include_cols=None, group_cols=None, orientation="front"):
+    def merge_notes(self, section_remover=None, include_cols=None, group_cols=None, 
+                    orientation="front", keep_unlabelled=True):
         """
         merge repeated notes of same visit into a single note text to be used by llms
         :param section_remover: an instance of SectionRemover
@@ -91,7 +98,7 @@ class PreprocessForClassfication:
             note_text = " ".join(
                 [str(x) for x in group.sort_values(by=["File Time"], ignore_index=True)["Note Text"].tolist()])
             if section_remover is not None:
-                note_text = section_remover.remove_sections(note_text)
+                note_text = section_remover.remove_sections(note_text, keep_unlabelled)
             # add them one by one so there is more flexibility but at the cost of speed, these columns are things like
             # diagnoses, chief complaints etc. They are included as long as they are strings
             if include_cols is not None:

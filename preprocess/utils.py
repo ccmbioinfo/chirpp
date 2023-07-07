@@ -1,8 +1,6 @@
 import pandas as pd
-import os
-import re
 
-def read_crystal_excel_file(path, filters, additional_columns=[]):
+def read_crystal_excel_file(path, filters, additional_columns):
     """
     read crystal excel file
     :param path: path of the excel file
