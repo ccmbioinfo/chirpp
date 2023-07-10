@@ -21,10 +21,6 @@ class PreprocessForClassfication:
         :param pos_complaints: values that are definitely chirpp postive cases in the "Cheif Complaint" column, an iterable
         :param kwargs: passed to pd.read_csv for different parameters
         """
-        self.preprocessed = None
-        self.processed = None
-        self.raw = None
-        self.merged_raw = None
         self.files = pd.read_csv(mapping_file, **kwargs)
         self.note_types = note_types
         self.pos_complaints = pos_complaints
@@ -44,8 +40,7 @@ class PreprocessForClassfication:
                 notes.append(dat)
         notes = pd.concat(notes).reset_index(drop=True).drop_duplicates()
         notes["label"] = 1  # this is only for classification of whether chirpp or not
-        self.processed = notes
-        return self
+        notes
 
     def read_raw_notes(self, use_unlabelled, raw_col="raw_files", processed_col="processed_files",
                        additional_columns=[], filters=None):
@@ -70,10 +65,9 @@ class PreprocessForClassfication:
             
         notes = pd.concat(notes).reset_index(drop=True).drop_duplicates()
         notes = notes[notes["Note Type"].isin(self.note_types)]
-        self.raw = notes
-        return self
+        return notes
 
-    def merge_notes(self, section_remover=None, include_cols=None, group_cols=None, 
+    def merge_notes(self, raw, section_remover=None, include_cols=None, group_cols=None,
                     orientation="front", keep_unlabelled=True):
         """
         merge repeated notes of same visit into a single note text to be used by llms
@@ -86,12 +80,12 @@ class PreprocessForClassfication:
         """
         if group_cols is None:
             group_cols = ["MRN", "Arrival Date"]
-        notes_grouped = self.raw.groupby(group_cols)
+        notes_grouped = raw.groupby(group_cols)
         merged_raw = []
         if include_cols is not None:  # to make sure that they are stored at the end, they do not change with the row
             # there will always be a single value
             group_cols = group_cols + include_cols
-        for _, group in notes_grouped:
+        for _, group in tqdm(notes_grouped):
             df = group[group_cols].drop_duplicates()
             # I want to get the first files note at the top because I think that is more likely to contain the description
             # of what happened to the patient
@@ -116,10 +110,9 @@ class PreprocessForClassfication:
             df["Note Text"] = note_text
             merged_raw.append(df)
         merged_raw = pd.concat(merged_raw)
-        self.merged_raw = merged_raw
-        return self
+        return merged_raw
 
-    def add_labels(self, use_chirpp_column, positive_complaints, merge_columns):
+    def add_labels(self, merged_raw, processed, use_chirpp_column, positive_complaints, merge_columns):
         """
         add labels for classification
         :param use_chirpp_column: whether to use the "CHIRPP Icon column bool
@@ -127,26 +120,16 @@ class PreprocessForClassfication:
         :param merge_columns: a dict of column names mapping columns of Crystal notes to processed excel files
         :return: self with processed filled in
         """
-        dat = self.merged_raw
+        dat = merged_raw
         dat["label"] = None
         if positive_complaints is not None:
             dat["label"][dat["Chief Complaint"].isin(positive_complaints)] = 1
         if use_chirpp_column:
             dat["label"][~pd.isna(dat["CHIRPP Icon"])] = 1
-        merged = dat.merge(self.processed[list(merge_columns.values)], how="left",
+        merged = dat.merge(processed[list(merge_columns.values)], how="left",
                            left_on=list(merge_columns.keys), right_on=list(merge_columns.values))
         merged["label"][pd.isna(merged["label"])] = 0
-        self.preprocessed = merged
-        return self
-
-    def write_labeled_notes(self, file_path, **kwargs):
-        """
-        save processed notes to dist
-        :param file_path: file path
-        :param kwargs: additional arguments to pandas.to_csv
-        :return: None, save file to disk
-        """
-        self.processed.to_csv(file_path, **kwargs)
+        return merged
 
 
 class PreprocessForSummary:
