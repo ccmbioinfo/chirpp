@@ -9,6 +9,7 @@ Original file is located at
 
 import re
 import pandas as pd
+import argparse
 
 dictionary = {
     'hx': 'history',
@@ -28,7 +29,6 @@ dictionary = {
     'heme': 'hematology',
     'rx': 'prescription',
     'tx': 'treatment',
-    #'x': 'times',
     'd': 'days ago',
     'mo': 'months',
     'lac': 'laceration',
@@ -52,7 +52,6 @@ dictionary = {
     'sw': 'social worker',
     'sx': 'symptoms',
     'sh': 'self-harm',
-    #'\?': 'possibly',
     'pt': 'patient',
     "pt's": "patient's",
     'r': 'right',
@@ -76,7 +75,6 @@ dictionary = {
     'plastics': 'plastic surgery',
     'loonie': '$1 coin',
     'toonie': '$2 coin',
-    #'am': 'morning',
     'OCD': 'Obsessive-Compulsive Disorder',
     'ADHD': 'Attention Deficit Hyperactivity Disorder',
     'BPD': 'Borderline Personality Disorder',
@@ -112,10 +110,11 @@ dictionary = {
     'RUQ': 'right upper quadrant'
     }
 
+sorted_dict = {key: dictionary[key] for key in sorted(dictionary)}
+reversed_dict = {key: sorted_dict[key] for key in reversed(sorted_dict)}
 
-
-terms_to_replace = list(dictionary.keys())
-replacements = list(dictionary.values())
+terms_to_replace = list(reversed_dict.keys())
+replacements = list(reversed_dict.values())
 
 term_mapping = {k.lower(): v for k, v in zip(terms_to_replace, replacements)}
 
@@ -225,8 +224,35 @@ def summary_cleanup(text):
     Returns:
         str: The cleaned up summary text.
     """
-    new_text = capitalize_sentences(remove_extra_spaces(text))
-    pushed_text = push_punctuations(new_text)
-    replaced_text = modify_text(pushed_text)
-    final_text = final(replaced_text)
-    return final_text
+    if text != "" and text != None:
+        new_text = capitalize_sentences(remove_extra_spaces(text))
+        pushed_text = push_punctuations(new_text)
+        replaced_text = modify_text(pushed_text)
+        final_text = final(replaced_text)
+        return final_text
+
+#filename = 'C:/Users/Bailey Ng/Desktop/April 2023.xlsx'
+#sheetName = 'Sheet2'
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--input", help = "input filename")
+parser.add_argument("--output", help = "output filename")
+parser.add_argument("sheetName", help = "sheet name in excel file")
+
+args = parser.parse_args()
+
+input = args.input
+output = args.output
+sheetName = args.sheetName
+
+file = r''+input
+df = pd.read_excel(file, sheet_name = sheetName)
+
+column_index = 18
+column = df.iloc[:, column_index]
+
+for i, cell in enumerate(column):
+    column[i] = summary_cleanup(str(cell))
+
+newFile = r'' + output
+df.to_excel(newFile, sheet_name = sheetName, index=False)
