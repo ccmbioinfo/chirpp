@@ -1,6 +1,7 @@
 import pandas
+import argparse
 
-def body_parts(diagnosis):
+def bodyParts(diagnosis):
     """
     Function that matches the injury with the corresponding bodypart.
 
@@ -60,13 +61,13 @@ def body_parts(diagnosis):
         return 560
     elif ((("head" in dx) and ("radial" not in dx and "forehead" not in dx)) or ("scalp" in dx) or ("skull" in dx)):
         return 110
-    elif (("face" in dx) or ("eyelid" in dx) or ("periocular" in dx) or ("area" in dx) or (("ear" in dx) and ("forearm" not in dx)) or ("nose" in dx) or ("mouth" in dx) or ("jaw" in dx) or ("nasal" in dx)) or ("facial" in dx) or ("chin" in dx) or ("cheek" in dx) or ("eyebrow" in dx) or ("lip" in dx and "slipped" not in dx) or ("forehead" in dx) or ("sinus" in dx) or ("orbital" in dx) or ("epistaxis" in dx) or ("nose" in dx and "bleed" in dx) or ("palsy" in dx):
+    elif (("mandible" in dx) or ("face" in dx and "surface" not in dx) or ("eyelid" in dx) or ("periocular" in dx) or ("area" in dx) or (("ear" in dx) and ("forearm" not in dx) and ("frenulum" not in dx)) or ("nose" in dx) or ("mouth" in dx) or ("jaw" in dx) or ("nasal" in dx)) or ("facial" in dx) or ("chin" in dx) or ("cheek" in dx) or ("eyebrow" in dx) or ("lip" in dx and "slipped" not in dx and "frenulum" not in dx) or ("forehead" in dx) or ("sinus" in dx) or ("orbital" in dx) or ("epistaxis" in dx) or ("nose" in dx and "bleed" in dx) or ("palsy" in dx) or ("tympanic" in dx and "membrane" in dx):
         return 120
-    elif (("internal" in dx) and ("mouth" in dx)) or ("palate" in dx) or ("tongue" in dx):
+    elif (("internal" in dx) and ("mouth" in dx)) or ("palate" in dx) or ("tongue" in dx) or ("tear" in dx and "frenulum" in dx and "lip" in dx):
         return 130
     elif ("neck" in dx) and ("femur" not in dx and "radial" not in dx and "fibula" not in dx and "tibula" not in dx and "fib" not in dx and "tib" not in dx and "tibia" not in dx):
         return 140
-    elif (("upper" in dx) and ("esophag" in dx)) or ("trachea" in dx):
+    elif (("upper" in dx or "impact" in dx) and ("esophag" in dx)) or ("trachea" in dx) or ("pharyngeal" in dx) or ("laryngeal" in dx):
         return 141
     elif ("cervical" in dx):
         return 210
@@ -80,9 +81,9 @@ def body_parts(diagnosis):
         return 250
     elif (("thorax" in dx) or ("ribs" in dx) or ("lungs" in dx) or ("armpits" in dx) or ("lower esophagus" in dx) or ("trachea" in dx) or ("chest" in dx) or ("aspirat" in dx)):
         return 310
-    elif ("upper back" in dx):
+    elif ("upper back" in dx) or ("trapeziu" in dx):
         return 315
-    elif ("abdom" in dx) or ("colon" in dx) or ("foreign" in dx and "ingestion" in dx) or ("stomach" in dx) or ("kidney" in dx) or ("sple" in dx and "cyst" not in dx and "splenomegaly" not in dx and "disease" not in dx):
+    elif ("abdom" in dx) or ("colon" in dx) or ("foreign" in dx and ("ingestion" in dx or "intestine" in dx)) or ("stomach" in dx) or ("kidney" in dx) or ("sple" in dx and "cyst" not in dx and "splenomegaly" not in dx and "disease" not in dx) or ("gastrointestinal tract" in dx) or ("liver" in dx):
         return 321
     elif ("lower back" in dx) or ("flank" in dx):
         return 322
@@ -118,7 +119,7 @@ def body_parts(diagnosis):
         return 530
     elif (("lower leg" in dx) or ("tibia" in dx) or ("fibula" in dx)) and ("distal" not in dx and "proximal" not in dx):
         return 540
-    elif (("ankle" in dx) or ("tarsal" in dx) or (("distal" in dx) and ("tibia" in dx or "fibula" in dx))):
+    elif (("ankle" in dx) or ("tarsal" in dx) or (("distal" in dx) and ("tibia" in dx or "fibula" in dx))) or ("tillaux" in dx):
         return 550
     elif ("toe" in dx or "phalan" in dx):
         return 570
@@ -128,18 +129,17 @@ def body_parts(diagnosis):
     if ("foreign" in dx or "fb" in dx) and noBP != True:
         return False
 
-#Takes input from user for a file at any location
-# Sample output:
-# Enter your file address: C:\Users\Username\Desktop
-# Enter your file name: April 2022
-# Enter the excel sheet that you want to autofill: 1
-address = input("Enter your file address: ")
-name = input("Enter your file name: ")
-sheetNumber = input("Enter the excel sheet that you want to autofill: ")
+#Argparse stuff for CLI 
+parser = argparse.ArgumentParser()
+parser.add_argument("--input", help = "input filename")
+parser.add_argument("--output", help = "output filename")
+parser.add_argument("sheetNumber", type = int, help = "sheet number in the excel file")
+args = parser.parse_args()
+input = args.input
+output = args.output
+sheetNumber = int(args.sheetNumber)-1
 
-sheetNumber = int(sheetNumber)-1
-fullFileAddress = address+'\\'+name+".xlsx"
-file = r''+fullFileAddress
+file = r''+input
 sheet2 = pandas.read_excel(file, sheet_name=sheetNumber)
 
 #loops through each row and codes NO1 and BP1 based on the diagnosis
@@ -154,7 +154,48 @@ for index, row in sheet2.iterrows():
         # Read the diagnosis from the diagnosis column in the current row and makes it all lowercase for consistency
         dx = row['Diagnosis'].lower()
 
-        #check for all possible codes and assigns the proper CHIRPP code to the case (VERY hardcoded)
+        """
+        NO1 codes represent different nature of injuries based on specific conditions present in the 'dx' (diagnosis) list.
+
+        - 10: If the diagnosis contains "abrasion" and does not contain specific eye-related terms or kidney/spleen-related terms, or if it contains "abrasion" along with "eyelid."
+        - 11: If the diagnosis contains terms like "open wound," "laceration," "minor cut," "nail avulsion," "circumcision," "fissure," "epistaxis," "self-cut," "dehiscence wound," "nose bleed," or "tear frenulum lip."
+        - 12: If the diagnosis contains terms related to "fracture," "fx," or "broken" but not "tooth" or "patholog."
+        - 13: If the diagnosis contains terms like "dislocation," "subluxation," or "slipped femoral."
+        - 14: If the diagnosis contains terms related to "sprain" or "strain."
+        - 15: If the diagnosis contains terms related to "nerve" or "palsy."
+        - 16: If the diagnosis contains terms related to "blood vessel" or "subungual."
+        - 17: If the diagnosis contains terms related to "tendon" or "muscle" along with "injury," "rupture," or "sever."
+        - 18: If the diagnosis contains the term "crush."
+        - 19: If the diagnosis contains the term "amputation."
+        - 20: If the diagnosis contains terms related to "burn" or "corrosion" but not specific eye-related terms.
+        - 21: If the diagnosis contains the term "frostbite."
+        - 22: If the diagnosis contains the term "bite" without "insect" and not related to specific animals or humans.
+        - 23: If the diagnosis contains the term "electric."
+        - 24: If the diagnosis contains terms related to "corrosion," "chemical," "injur," "burn," "abrasion," "trauma," or "hyphema" along with specific eye-related terms or "pain."
+        - 25: If the diagnosis contains terms related to "dental" or "tooth" along with "injury," "fracture," "trauma," "chip," "pain," "implant," "device," "avulsion," or "impact."
+        - 26: If the diagnosis contains terms related to "kidney," "spleen," "splenic," "ear canal," "liver," or "perforated tympanic membrane" along with "injury," "abrasion," or "laceration."
+        - 27: If the diagnosis contains terms related to "pain" not related to specific organs or disorders, "soft tissue" not related to specific organs, "swelling" not related to the eye, "testicular torsion," or just "injury" but not related to infections, foreign bodies, or complications.
+        - 31: If the diagnosis contains "foreign body" along with specific eye-related terms.
+        - 32: If the diagnosis contains "foreign body" or "fb" related to the ear or "auditory hallucination" without "earlobe."
+        - 33: If the diagnosis contains "foreign body" or "fb" related to the nose, nasal cavity, sinus, or nostril.
+        - 34: If the diagnosis contains "foreign body" or "fb" related to the respiratory system, aspiration, choking, or laryngeal region.
+        - 35: If the diagnosis contains "foreign body" or "fb" related to the digestive system, pharyngeal region, intestines, stomach, esophagus, or swallowing, or if it includes "impaction esophagus."
+        - 36: If the diagnosis contains "foreign body" or "fb" related to the genito-urinary system, bladder, penis, urethra, or vagina.
+        - 37: If the diagnosis contains "foreign body" or "fb" related to soft tissues like earlobe, skin, or splinter, or it contains a specific body part.
+        - 41: If the diagnosis contains "minor head" or "head injury" or "head trauma."
+        - 42: If the diagnosis contains "concussion."
+        - 43: If the diagnosis contains terms related to "intracranial," "brain" (without tumor/cancer), "subarachnoid," or "subdural hematoma," or "intraventricular" along with "hemorrhage."
+        - 50: If the diagnosis contains terms related to "poison," "toxic," "overdose," or "ingestion."
+        - 51: If the diagnosis contains terms related to "drowning" or "immersion."
+        - 52: If the diagnosis contains terms related to "asphyxia" or "choking."
+        - 53: If the diagnosis contains terms related to "overexertion," "heat stress," or "cold stress."
+        - 70: If the diagnosis contains "no injury" but not related to the nose.
+        - 71: If the diagnosis contains terms related to specific mental health terms.
+        - 75: If the diagnosis contains terms related to "pulled elbow" or "nursemaid."
+        - 76: If the diagnosis contains the term "caustic."
+        - 77: If the diagnosis contains terms related to "stab" (without "instability"), "bullet," or "penetration."
+        - If the diagnosis contains terms related to "injury" or "trauma," the body part is extracted from the diagnosis and used as BP1.
+        """
         if (("facial" in dx or "skull" in dx) and "fracture" in dx):
             sheet2.at[index, 'NO2'] = 42
             sheet2.at[index, 'BP2'] = 135
@@ -165,7 +206,7 @@ for index, row in sheet2.iterrows():
         if (("abrasion" in dx) and ("globe" not in dx and "cornea" not in dx and "eye" not in dx and "ocular" not in dx and "canal" not in dx)) or (("bruis" in dx or "contusion" in dx or ("hematoma" in dx and "subdural" not in dx)) and "subungual" not in dx) or (("superficial" in dx) and ("cut" not in dx and "laceration" not in dx and "burn" not in dx and "swelling" not in dx)) and (("kidney" not in dx) or ("spleen" not in dx) or ("splenic" not in dx)) or ("abrasion" in dx and "eyelid" in dx):
             sheet2.at[index, 'NO1'] = 10
             sheet2.at[index, 'BP1'] = bodyParts(dx)
-        elif ("open wound" in dx or "laceration" in dx or ("minor" in dx and "cut" in dx) or ("nail" in dx and "avulsion" in dx) or ("circumcision" in dx)) or ("fissure" in dx) or ("epistaxis" in dx) or ("self" in dx and "cut" in dx) or ("dehiscence" in dx and "wound" in dx) or ("nose" in dx and "bleed" in dx):
+        elif (("open wound" in dx or "laceration" in dx or ("minor" in dx and "cut" in dx) or ("nail" in dx and "avulsion" in dx) or ("circumcision" in dx)) or ("fissure" in dx) or ("epistaxis" in dx) or ("self" in dx and "cut" in dx) or ("dehiscence" in dx and "wound" in dx) or ("nose" in dx and "bleed" in dx)) and (("liver" not in dx) and ("splenic" not in dx)) or ("tear" in dx and "frenulum" in dx and "lip" in dx):
             sheet2.at[index, 'NO1'] = 11
             sheet2.at[index, 'BP1'] = bodyParts(dx)
         elif (("fracture" in dx or "fx" in dx or "broken" in dx) and ("tooth" not in dx and "patholog" not in dx)):
@@ -177,7 +218,7 @@ for index, row in sheet2.iterrows():
         elif ("sprain" in dx or "strain" in dx):
             sheet2.at[index, 'NO1'] = 14
             sheet2.at[index, 'BP1'] = bodyParts(dx)
-        elif "nerve" in dx or "palsy" in dx:
+        elif ("nerve" in dx or "palsy" in dx) and ("oedema" not in dx):
             sheet2.at[index, 'NO1'] = 15
             sheet2.at[index, 'BP1'] = bodyParts(dx)
         elif "blood vessel" in dx or "subungual" in dx:
@@ -198,37 +239,37 @@ for index, row in sheet2.iterrows():
         elif "frostbite" in dx:
             sheet2.at[index, 'NO1'] = 21
             sheet2.at[index, 'BP1'] = bodyParts(dx)
-        elif (("bite" in dx and "insect" not in dx) or ("dog" in dx or "squirrel" in dx or "racoon" in dx or "human" in dx) and "medication" not in dx and "complication" not in dx):
+        elif (("bite" in dx and "insect" not in dx) or ("dog" in dx or "squirrel" in dx or "racoon" in dx or "cat" in dx or "human" in dx) and "medication" not in dx and "complication" not in dx):
             sheet2.at[index, 'NO1'] = 22
             sheet2.at[index, 'BP1'] = bodyParts(dx)
         elif "electric" in dx:
             sheet2.at[index, 'NO1'] = 23
             sheet2.at[index, 'BP1'] = bodyParts(dx)
-        elif (("corrosion" in dx or "chemical" in dx or "injury" in dx or "burn" in dx or "abrasion" in dx or "trauma" in dx) and ("globe" in dx or "cornea" in dx or "eye" in dx or "ocular" in dx)) or (("eye" in dx or "ocular" in dx) and "pain" in dx):
+        elif (("corrosion" in dx or "chemical" in dx or "injur" in dx or "burn" in dx or "abrasion" in dx or "trauma" in dx or "hyphema" in dx) and ("globe" in dx or "cornea" in dx or "eye" in dx or "ocular" in dx)) or (("eye" in dx or "ocular" in dx) and "pain" in dx) or ("visual" in dx and "disturbance" in dx) or ("conjunctival" in dx and ("haemorrhage" in dx or "hemorrhage" in dx)):
             sheet2.at[index, 'NO1'] = 24
             sheet2.at[index, 'BP1'] = 135
-        elif (("dental" in dx or "tooth" in dx or "teeth" in dx) and ("injury" in dx)) or (("tooth" in dx) and ("fracture" in dx)) or ("dental" in dx and "trauma" in dx) or ("chip" in dx and ("tooth" in dx or "teeth" in dx)) or (("dental" in dx or "tooth" in dx or "teeth" in dx) and "pain" in dx) or ("dental" in dx and ("implant" in dx or "device" in dx)):
+        elif (("dental" in dx or "tooth" in dx or "teeth" in dx) and ("injury" in dx or "fracture" in dx or "trauma" in dx or "chip" in dx or "pain" in dx or "implant" in dx or "device" in dx or "avulsion" in dx or "impact" in dx)):
             sheet2.at[index, 'NO1'] = 25
             sheet2.at[index, 'BP1'] = 135
-        elif (("kidney" in dx) or ("spleen" in dx) or ("splenic" in dx) or ("ear" in dx and "canal" in dx)) and ("injury" in dx or "abrasion" in dx):
+        elif (("kidney" in dx) or ("spleen" in dx) or ("splenic" in dx) or ("ear" in dx and "canal" in dx) or ("liver" in dx) and ("injury" in dx or "abrasion" in dx or "laceration" in dx)) or ("perforated tympanic membrane" in dx):
             sheet2.at[index, 'NO1'] = 26
             sheet2.at[index, 'BP1'] = bodyParts(dx)
-        elif (("pain" in dx and "sickle" not in dx and "disorder" not in dx) or ("soft" in dx and "tissue" in dx and "cyst" not in dx and "mass" not in dx) or ("swelling" in dx and "eye" not in dx) or ("testicular" in dx and "torsion" in dx)) and ("infection" not in dx and "foreign" not in dx and "fb" not in dx):
+        elif (("pain" in dx and "sickle" not in dx and "disorder" not in dx) or ("soft" in dx and "tissue" in dx and "cyst" not in dx and "mass" not in dx) or ("swelling" in dx and "eye" not in dx) or ("testicular" in dx and "torsion" in dx) or ("injury" in dx)) and ("infection" not in dx and "foreign" not in dx and "fb" not in dx):
             sheet2.at[index, 'NO1'] = 27
             sheet2.at[index, 'BP1'] = bodyParts(dx)
         elif ("foreign" in dx and ("globe" in dx or "cornea" in dx or "eye" in dx or "ocular" in dx)):
             sheet2.at[index, 'NO1'] = 31
             sheet2.at[index, 'BP1'] = 135
-        elif ("foreign" in dx and "ear" in dx and "earlobe" not in dx) or ("fb" in dx and "ear" in dx):
+        elif ((("foreign" in dx) and "ear" in dx or ("auditory" in dx and "hallucination" not in dx)) and "earlobe" not in dx) or ("fb" in dx and "ear" in dx):
             sheet2.at[index, 'NO1'] = 32
             sheet2.at[index, 'BP1'] = 135
         elif ("foreign" in dx or "fb" in dx) and ("nose" in dx or "nasal" in dx or "nostril" in dx or "sinus" in dx or "nare" in dx):
             sheet2.at[index, 'NO1'] = 33
             sheet2.at[index, 'BP1'] = 135
-        elif ("foreign" in dx or "fb" in dx) and ("respira" in dx or "aspiration" in dx or "choking" in dx or "air" in dx) or ("choking" in dx or "gagging" in dx):
+        elif (("foreign" in dx or "fb" in dx) and ("respira" in dx or "aspiration" in dx or "choking" in dx or "air" in dx or "laryngeal" in dx)) or ("gagging" in dx):
             sheet2.at[index, 'NO1'] = 34
             sheet2.at[index, 'BP1'] = bodyParts(dx)
-        elif ("foreign" in dx or "fb" in dx) and ("stomach" in dx or "ingestion" in dx or "colon" in dx or "alimentary" in dx or "esophag" in dx or "swallow" in dx):
+        elif ("foreign" in dx or "fb" in dx) and ("pharyngeal" in dx or "intestine" in dx or "digestive" in dx or "stomach" in dx or "ingestion" in dx or "colon" in dx or "alimentary" in dx or "esophag" in dx or "swallow" in dx) or ("impaction" in dx and "esophagus" in dx):
             sheet2.at[index, 'NO1'] = 35
             sheet2.at[index, 'BP1'] = bodyParts(dx)
         elif (("foreign" in dx and "genito-urinary" in dx) or ("foreign" in dx and "bladder" in dx) or ("foreign" in dx and "penis" in dx) or ("foreign" in dx and "urethra" in dx) or ("foreign" in dx and "vagina" in dx)):
@@ -243,7 +284,7 @@ for index, row in sheet2.iterrows():
         elif "concussion" in dx:
             sheet2.at[index, 'NO1'] = 42
             sheet2.at[index, 'BP1'] = 135
-        elif ("intracranial" in dx) or ("brain" in dx and ("tumor" not in dx and "tumour" not in dx and "cancer" not in dx)) or ("subarachnoid" in dx) or ("subdural" in dx and "hematoma" in dx):
+        elif ("intracranial" in dx) or ("brain" in dx and ("tumor" not in dx and "tumour" not in dx and "cancer" not in dx)) or ("subarachnoid" in dx) or ("subdural" in dx and "hematoma" in dx) or (("intraventricular" in dx) and ("haemorrhage" in dx or "hemorrhage" in dx)):
             sheet2.at[index, 'NO1'] = 43
             sheet2.at[index, 'BP1'] = 135
         elif ("poison" in dx or "toxic" in dx or "overdose" in dx or "ingestion" in dx):
@@ -252,7 +293,7 @@ for index, row in sheet2.iterrows():
         elif ("drown" in dx or "immersion" in dx):
             sheet2.at[index, 'NO1'] = 51 
             sheet2.at[index, 'BP1'] = 900
-        elif "asphyxia" in dx:
+        elif ("asphyxia" in dx) or ("choking" in dx):
             sheet2.at[index, 'NO1'] = 52
             sheet2.at[index, 'BP1'] = 900
         elif ("overexertion" in dx or ("heat" in dx and "stress" in dx) or ("cold" in dx and "stress" in dx)):
@@ -261,7 +302,7 @@ for index, row in sheet2.iterrows():
         elif ("no" in dx and "injury" in dx and "nose" not in dx):
             sheet2.at[index, 'NO1'] = 70
             sheet2.at[index, 'BP1'] = 900
-        elif ("depressi" in dx) or ("aggressi" in dx) or ("tic" in dx and len(dx) == 3) or (("stress" in dx or "anxiety" in dx) and ("fracture" not in dx and "respira" not in dx)) or ("overdose" in dx) or ("anorexia" in dx) or ("poison" in dx) or ("intoxication" in dx) or (("behavi" in dx or "mental" in dx or "disorder" in dx or "social" in dx) and ("bizarre" in dx or "mood" in dx or "food" in dx or "conversion" in dx or "eat" in dx or "depress" in dx or "motor" in dx or "tic" in dx or "compulsive" in dx or "problem" in dx or "change" in dx or "health" in dx or "abnormal" in dx or "aggressive" in dx)) or (("tic" in dx) and ("facial" in dx or "simple" in dx)) or ("suicid" in dx) or ("violent" in dx) or ("ocd" in dx) or ("drug" in dx and "ingestion" in dx) or ("self" in dx and "harm" in dx) or ("panic" in dx) or ("emotional" in dx) or ("disruptive" in dx) or ("temper" in dx) or ("food" in dx and "refusal" in dx) or ("banging" in dx) or ("behavi" in dx and ("change" in dx or "concern" in dx)) and ("neurologic" not in dx) or ("mental" in dx and "disorder" in dx):
+        elif ("mania" in dx) or ("depressi" in dx) or ("aggressi" in dx) or ("psychosis" in dx) or ("tic" in dx and len(dx) == 3) or (("stress" in dx or "anxiety" in dx) and ("fracture" not in dx and "respira" not in dx)) or ("overdose" in dx) or ("hallucination" in dx) or ("anorexia" in dx) or ("poison" in dx) or ("intoxication" in dx) or (("medication" in dx or "anger" in dx or "night" in dx or "behavi" in dx or "mental" in dx or "disorder" in dx or "social" in dx or "sleep" in dx or "learning" in dx or "mood" in dx or "weight" in dx) and ("adjustment" in dx or "management" in dx or "terror" in dx or "reaction" in dx or "depressed" in dx or "concern" in dx or "bizarre" in dx or "mood" in dx or "food" in dx or "conversion" in dx or "eat" in dx or "depress" in dx or "motor" in dx or "tic" in dx or "compulsive" in dx or "problem" in dx or "change" in dx or "health" in dx or "abnormal" in dx or "aggressive" in dx or "disturbance" in dx or "difficult" in dx or "change" in dx or "loss" in dx)) or (("tic" in dx) and ("facial" in dx or "simple" in dx)) or ("suicid" in dx) or ("violent" in dx) or ("ocd" in dx) or ("drug" in dx and "ingestion" in dx) or ("self" in dx and "harm" in dx) or ("panic" in dx) or ("emotional" in dx) or ("disruptive" in dx) or ("temper" in dx) or ("food" in dx and "refusal" in dx) or ("banging" in dx) or ("behavi" in dx and ("change" in dx or "concern" in dx)) and ("neurologic" not in dx) or (("mental" in dx or "behavi" in dx) and "disorder" in dx):
             sheet2.at[index, 'NO1'] = 71
             sheet2.at[index, 'BP1'] = 900
         elif ("pulled" in dx and "elbow" in dx) or ("nursemaid" in dx):
@@ -281,6 +322,5 @@ for index, row in sheet2.iterrows():
             sheet2.at[index, 'BP2'] = bodyParts(dx)
 
 # Saves to a new excel file named "autofilledSheet" in the same location
-newFullFileAddress = address+'\\'+"autofilledSheet.xlsx"
-newFile = r''+newFullFileAddress
+newFile = r''+ output
 sheet2.to_excel(newFile)
