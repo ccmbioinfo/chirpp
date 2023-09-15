@@ -1,9 +1,15 @@
-# these are the setting that preprocess class needs
 
+# classification
+num_labels=2
+include_labels=False
 
-classification={
-    "note_types":["ED Provider Notes"],
-    "pos_complaints":[ "Oral / Esophageal Foreign Body", "Upper Extremity Injury", "Lower Extremity Injury",
+# summarization
+max_length=128
+truncation=True
+
+read_args={"header":0, "sep":"\t"}
+
+pos_complaints=[ "Oral / Esophageal Foreign Body", "Upper Extremity Injury", "Lower Extremity Injury",
           "Burn", "Anxiety / Situational Crisis", "Head Injury", "Medical Device Problem",
           "Depression / Suicidal / Deliberate Self Harm", "Paediatric Disruptive Behaviour",
           "Laceration/Puncture", "Abrasion", "Neck Trauma", "Noxious Inhalation", "Foreign Body, Nose",
@@ -17,15 +23,11 @@ classification={
           "Isolated Abdominal Trauma - Blunt", "Anal / Rectal Trauma", "Multisystem Trauma - Blunt", "Foreign Body, Vagina",
           "Body Fluid Exposure", "Ring Removal", "Multisystem Trauma - Penetrating", "Near Drowning", "Isolated Abdominal Trauma - Penetrating",
           "Isolated Chest Trauma - Penetrating", "Substance Withdrawal", "Electrical Injury", "Frostbite / Cold Injury",
-          "Cardiac Arrest (Traumatic)", "Foreign Body in Eye"],
-    "include_cols":["Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "File Time"],
-    "use_unlabelled":True,
-    "use_chirpp_column":True,
-}
+          "Cardiac Arrest (Traumatic)", "Foreign Body in Eye"]
 
-#TODO
-summary={}
+note_col="Note Text"
+chirpp_col="CHIRPP Icon"
+write_args={"index":False, "sep":"\t"}
 
-
-
-
+final_columns=["MRN", "Arrival Date", "Note Text", "probs", "summary", "cosine_similarity", "Diagnosis",
+               "Problem List", "Chief Complaint"]

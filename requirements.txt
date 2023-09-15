@@ -4,3 +4,4 @@ medspacy
 spacy_transformers
 pandas
 tqdm
+snakemake

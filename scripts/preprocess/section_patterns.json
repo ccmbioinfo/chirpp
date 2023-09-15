@@ -587,7 +587,10 @@
     {
       "literal": "review of systems",
       "category": "physical_exam"
-    }
-
+    },
+    {
+      "literal":  "ED Course User Index",
+      "category": "user_index"
+    },
   ]
 }
