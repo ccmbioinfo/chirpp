@@ -28,8 +28,6 @@ inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"]
 all_notes["Note Text"] = all_notes["Note Text"].astype(str)
 all_notes["Disposition"] = all_notes["Disposition"].astype(str)
 
-
-
 report_df = create_report(all_notes, inference_notes,
                           params.REPORT_HEADER, params.note_types)
 report_df.sort_values(by="probs", inplace=True, ascending=False)
@@ -41,4 +39,3 @@ with pd.ExcelWriter(args.outname) as out:
     sheet1.to_excel(out, sheet_name="Sheet 1", index=False)
     sheet2.to_excel(out, sheet_name="Sheet 2", index=False)
 
-    alvaroalon2/biobert_chemical_ner
