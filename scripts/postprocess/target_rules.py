@@ -1,6 +1,6 @@
 from medspacy.ner import TargetRule
 
-body_parts=[
+body_parts = [
 
     TargetRule(literal="110",
                category="BODY_PART",
@@ -79,8 +79,9 @@ body_parts=[
                         ]),
     TargetRule(literal="324",
                category="BODY_PART",
-               pattern=[{"LOWER": {"IN": ["penis", "scrotum", "testes", "testis", "testicular", "circumcision"]}},
-                        ]),
+               pattern=[
+                   {"LOWER": {"IN": ["penis", "scrotum", "testes", "testis", "testicular", "circumcision", "penile"]}},
+                   ]),
     TargetRule(literal="325",
                category="BODY_PART",
                pattern=[{"LOWER": {"IN": ["groin"]}},
@@ -95,7 +96,7 @@ body_parts=[
                         ]),
     TargetRule(literal="415",
                category="BODY_PART",
-               pattern=[{"LOWER": {"IN": ["clavicle", "clavical",]}},
+               pattern=[{"LOWER": {"IN": ["clavicle", "clavical", ]}},
                         ]),
     TargetRule(literal="420",
                category="BODY_PART",
@@ -105,7 +106,8 @@ body_parts=[
     TargetRule(literal="430",
                category="BODY_PART",
                pattern=[{"LOWER": {"IN": ["elbow", "distal humerus", "distal humeral", "condyl", "ulna", "radius"
-                                          "proximal radius", "proximal ulna", "olecranon"]}}
+                                                                                                         "proximal radius",
+                                          "proximal ulna", "olecranon"]}}
                         ]),
     TargetRule(literal="440",
                category="BODY_PART",
@@ -118,7 +120,7 @@ body_parts=[
 
     TargetRule(literal="460",
                category="BODY_PART",
-               pattern=[{"LOWER": {"IN": ["hand", "metacarpal", "phalanges"]}}]),
+               pattern=[{"LOWER": {"IN": ["hand", "metacarpal"]}}]),
 
     TargetRule(literal="470",
                category="BODY_PART",
@@ -150,26 +152,30 @@ body_parts=[
     TargetRule(literal="560",
                category="BODY_PART",
                pattern=[{"LOWER": {"IN": ["foot", "metatarsal"]}},
-                        {"LOWER": {"NOT_IN": ["phalan", "toe", "high", "height", "distance", "distance of", "height of",
-                                              "away"]}}
+                        {"LOWER": {
+                            "NOT_IN": ["phalanges", "phalanx", "toe", "high", "height", "distance", "distance of",
+                                       "height of",
+                                       "away"]}}
                         ]),
     TargetRule(literal="570",
                category="BODY_PART",
-               pattern=[{"LOWER": {"IN": ["phalan", "toe"]}}
+               pattern=[{"LOWER": {"IN": ["toe"]}}
                         ]),
-    TargetRule(literal="ST", #soft tissue this is for foreign bodies only
+    TargetRule(literal="ST",  # soft tissue this is for foreign bodies only
                category="BODY_PART",
                pattern=[{"LOWER": {"IN": ["skin", "earlobe", "tissue", "soft tissue"]}}
                         ]),
 
 ]
 
-injuries=[
+injuries = [
     TargetRule(literal="10",
                category="INJURY",
                pattern=[{"LOWER": {"IN": ["subungual", "hematoma", "abrasion", "bruise", "contusion" "superficial"]}},
-                        {"LOWER": {"NOT_IN": ["globe", "cornea", "ocular", "eye", "cut", "laceration", "burn", "swelling"
-                                              "kidney", "liver", "spleen", "splenic"]}}
+                        {"LOWER": {
+                            "NOT_IN": ["globe", "cornea", "ocular", "eye", "cut", "laceration", "burn", "swelling"
+                                                                                                        "kidney",
+                                       "liver", "spleen", "splenic"]}}
                         ]),
     TargetRule(literal="11",
                category="INJURY",
@@ -180,8 +186,8 @@ injuries=[
     TargetRule(literal="12",
                category="INJURY",
                pattern=[{"LOWER": {"IN": ["fracture", "fx", "broken", ]}},
-                        {"LOWER": {"NOT_IN"["broken tooth", "broke tooth", "broken teeth", "broke teeth",
-                                   "chipped tooth", "chipped teeth", "dental"]}}
+                        {"LOWER": {"NOT_IN": ["broken tooth", "broke tooth", "broken teeth", "broke teeth",
+                                              "chipped tooth", "chipped teeth", "dental"]}}
                         ]),
 
     TargetRule(literal="13",
@@ -239,12 +245,12 @@ injuries=[
     TargetRule(literal="24",
                category="INJURY",
                pattern=[{"LOWER": {"IN": ["globe", "cornea", "ocular", "eye", "visual disturbance", "vision loss"]}},
-                        {"LOWER": {"NOT_IN":["hallucination", "foreign", "fb", "inserted"]}}
+                        {"LOWER": {"NOT_IN": ["hallucination", "foreign", "fb", "inserted"]}}  # 135
                         ]),
     TargetRule(literal="25",
                category="INJURY",
                pattern=[{"LOWER": {"IN": ["broken tooth", "broke tooth", "broken teeth", "broke teeth",
-                                   "chipped tooth", "chipped teeth", "dental", "dental implant"]}},
+                                          "chipped tooth", "chipped teeth", "dental", "dental implant"]}},
                         ]),
     TargetRule(literal="26",
                category="INJURY",
@@ -254,19 +260,20 @@ injuries=[
     TargetRule(literal="27",
                category="INJURY",
                pattern=[{"LOWER": {"IN": ["soft tissue", "swelling", "torsion"]}},
-                        {"LOWER": {"NOT_IN":["sickle", "cyst", "mass", "foreign", "fb"]}},
+                        {"LOWER": {"NOT_IN": ["sickle", "cyst", "mass", "foreign", "fb"]}},
                         ]),
-    TargetRule(literal="3X", #all foreign bodies, the result will depend on body parts
+    TargetRule(literal="3X",  # all foreign bodies, the result will depend on body parts
                category="INJURY",
-               pattern=[{"LOWER": {"IN":["foreign", "fb", "foreign body", "splinter", "hair tourniquet"]}},
+               pattern=[{"LOWER": {"IN": ["foreign", "fb", "foreign body", "splinter", "hair tourniquet"]}},
+                        # 31, 32, 32 all return 135
                         ]),
     TargetRule(literal="41",
                category="INJURY",
-               pattern=[{"LOWER": {"IN": ["minor head"]}}]),
+               pattern=[{"LOWER": {"IN": ["minor head"]}}]),  # 135
 
     TargetRule(literal="42",
                category="INJURY",
-               pattern=[{"LOWER": {"IN": ["concussion"]}},
+               pattern=[{"LOWER": {"IN": ["concussion"]}},  # 135
                         ]),
     TargetRule(literal="43",
                category="INJURY",
@@ -278,21 +285,21 @@ injuries=[
                pattern=[{"LOWER": {"IN": ["poison", "toxic", "overdose", "overdose ingestion", "substance misuse"]}}]),
     TargetRule(literal="51",
                category="INJURY",
-               pattern=[{"LOWER": {"IN": ["drown", "immersion"]}}]),
+               pattern=[{"LOWER": {"IN": ["drown", "immersion"]}}]),  # 900
     TargetRule(literal="52",
                category="INJURY",
-               pattern=[{"LOWER": {"IN": ["asphyxia", "choking"]}}]),
+               pattern=[{"LOWER": {"IN": ["asphyxia", "choking"]}}]),  # 900
     TargetRule(literal="53",
                category="INJURY",
                pattern=[{"LOWER": {"IN": ["heat stress", "cold stress", "hypothermia", "hyperthermia",
-                                          "overexertion"]}}]),
+                                          "overexertion"]}}]),  # 900
     TargetRule(literal="70",
                category="INJURY",
                pattern=[{"LOWER": {"IN": ["no injury"]}}]),
 
     TargetRule(literal="75",
                category="INJURY",
-               pattern=[{"LOWER": {"IN": ["pulled elbow", "nursemaid"]}}]),
+               pattern=[{"LOWER": {"IN": ["pulled elbow", "nursemaid"]}}]),  # 430
 
     TargetRule(literal="76",
                category="INJURY",
@@ -301,66 +308,106 @@ injuries=[
     TargetRule(literal="77",
                category="INJURY",
                pattern=[{"LOWER": {"IN": ["stab", "stabbing", "bullet", "stabbed", "penetrating"]}}]),
-    #71 is mental health with 900
+    # 71 is mental health with 900
 
 ]
 
-substances=[
+substances = [
     TargetRule(literal="alcohol",
                category="SUBSTANCE",
-               pattern=[{"LOWER": {"IN":["alchohol", "etoh", "vodka", "rum", "beer", "tequila", "drunk", "wine"
-                                           "passed out"]}}]),
+               pattern=[{"LOWER": {"IN": ["alchohol", "etoh", "vodka", "rum", "beer", "tequila", "drunk", "wine"
+                                                                                                          "passed out"]}}]),
     TargetRule(literal="rec drugs",
                category="SUBSTANCE",
-               pattern=[{"LOWER": {"IN":["cannabis", "weed", "pot", "edibles", 'thc gummies',
-                                         "thc choclate", "ecstasy", "heroin", "n-bomb", "crack cocaine",
-                                         "meth", "cocaine", "crack", "mdma", "street drugs", "recreational drugs",
-                                         "shrooms", "mushrooms", "psilocybin", "lsd", "cbd", "cannabinoid", "molly",
-                                         "got high", "uppers", "downers"]}}]),
+               pattern=[{"LOWER": {
+                   "IN": ['cannabinoid', 'cannabinoids', 'cannabis', 'cbd', 'cocaine', 'crack cocaine', 'crack',
+                          'downers', 'ecstasy', 'edible', 'edibles', 'got high', 'heroin', 'heroine', 'lsd', 'mdma',
+                          'meth', 'methamphetamine', 'molly', 'morphine', 'mushroom', 'mushrooms', 'n-bomb', 'opioid',
+                          'pcp', 'poppers', 'poppers', 'pot', 'psilocybin', 'recreational drugs', 'shrooms',
+                          'stoner patch',
+                          'street drugs', 'tetrahydrocannabinol', 'thc choclate', 'thc gummies', 'thc', 'uppers',
+                          'weed', ]}}]),
     TargetRule(literal="household",
                category="SUBSTANCE",
-               pattern=[{"LOWER": {"IN":["acetone", "rubbing alcohol", "peroxide", "h2o2", "isopropanol",
-                                         "after shave", "cleaner", "bio-oil", "essential oil", "bleach",
-                                         "detergent", "tide", "callus remover", "chlorine", "cleaning products",
-                                         "bait", 'poison', "diaper cream", "cream", "sanitizer", "icy hot", "vicks",
-                                         "lysol", "mr clean", "mr. clean", "pine sol", "road salt", "silicagel", "silica"
-                                         "soap", "windex", "witch hazel", "body wash", "borax", "drano", "naphtaline",
-                                         "moth balls", "silicagel", "diaper cream", "shampoo", "conditioner", "moisturizer"]}}]),
+               pattern=[{"LOWER": {
+                   "IN": ['acetone', 'after shave', 'ammonia', 'baby oil', 'bait', 'bio-oil', 'black locust tree bean',
+                          'bleach', 'body wash', 'borax', 'callus remover', 'camphor', 'carbon monoxide',
+                          'chloraseptic spray', 'chlorine', 'citronella', 'cleaner', 'cleaning products',
+                          'coffee beans', 'conditioner', 'cream', 'degreaser', 'deodorant', 'detergent', 'dettol',
+                          'diaper cream', 'drano', 'essential oil', 'essential oils', 'eucalyptus oil', 'febreze',
+                          'foot powder', 'glow stick', 'h2o2', 'household cleaner', 'icy hot', 'isopropanol',
+                          'isopropyl alcohol', 'lilly of the valley', 'lysol', 'methanol', 'moisturizer', 'moth balls',
+                          'mouthwash', 'mr clean', 'nail polish', 'naphtaline', 'oxyclean', 'paint', 'perfume',
+                          'peroxide', 'petrolatum', 'pine sol', 'poison', 'propane', 'raccoon feces', 'road salt',
+                          'rubbing alcohol', 'sanitizer', 'shampoo', 'silica', 'silicagel', 'soap', 'soap',
+                          'stain remover',
+                          'tide pod', 'tide', 'toilet bowl cleaner', 'vicks', 'windex', 'witch hazel',
+                          'yew berry', ]}}]),
     TargetRule(literal="tobacco",
                category="SUBSTANCE",
-               pattern=[{"LOWER": {"IN":["cigarettes", "smoke", "hookah", "shisha", "vape", "vaping", "vaporizer", "nicotine",
-                                         "nicorette"]}}]),
+               pattern=[{"LOWER": {
+                   "IN": ["cigarettes", "smoke", "hookah", "shisha", "vape", "vaping", "vaporizer", "nicotine",
+                          "nicorette", "grabba, cigar", "tobacco"]}}]),
     TargetRule(literal="oc drugs",
                category="SUBSTANCE",
-               pattern=[{"LOWER": {"IN":["acetaminophen", "advil", "alleve", "antiacid", "anti acid", "apple cider pills",
-                                         "aspirin", "benadryl", "betaine", "cold medication", "flu medication", "cough syrup",
-                                         "ex-lax", "gravol", "iron", "supplements", "vitamins", "multi vitamins", "multivitamins",
-                                         "multi-vitamins", "magnesium", "melatonin", "paracetamol", "restorlax", "robitussin",
-                                         "tylenol", "senokot", "claritin", "antihistamine", "asprin", "caffeine", "ibuprofen"
-                                         "midol", "salicylate"]}}]),
+               pattern=[{"LOWER": {
+                   "IN": ['acetaminophen', 'acetylsalicylic acid', 'advil', 'alleve', 'anti acid', 'antiacid',
+                          'antihistamine', 'apple cider pills', 'aspirin', 'benadryl', 'betaine', 'caffeine',
+                          'childrens tylenol', 'claritin', 'cold fx', 'cold medication', 'cold medications',
+                          'cough medications', 'cough syrup', 'dihpnehydramine', 'dimenhydrinate', 'ex-lax',
+                          'feramax', 'ferrous sulfate pills', 'flu medication', 'gaviscon', 'gravol', 'guaifenesin',
+                          'hydroxyzine', 'ibuprofen', 'indomethacin', 'iron', 'lactulose', 'laxatives', 'lidocaine',
+                          'loperamide', 'magnesium', 'melatonin', 'midol', 'motrin', 'multi vitamin', 'multi-vitamins',
+                          'multivitamin', 'nyquil', 'olbas', 'paracetamol', 'polysporin', 'pseudoephrine', 'reactine',
+                          'restorlax', 'robutussin', 'salicylate', 'senokot', 'sinutab', 'supplements', 'tylenol',
+                          'valproic acid', 'vitamin d', 'vitamins', 'voltaren', 'zquil', ]}}]),
 
     TargetRule(literal="pres drugs",
                category="SUBSTANCE",
-               pattern=[{"LOWER": {"IN":["adderall", "alprazolam", "amitriptyline", "amlodipine",
-                                         "amphetamine", "ativan", "baclofen", "benzocaine", "benzos", "biphentin",
-                                         "blood pressure medications", "brotizolam", "bupropion", "cantharidin",
-                                         "carbamazepine", "cetirizine", "chlorpheniramine", "cipralex", "citalopram",
-                                         "clobazam", "clonazepam", "clopidogrel", "codeine", "colchicine", "concerta",
-                                         "crestor", "crystal meth", "dilaudid", "diphenhydramine", "duloxetine",
-                                         "ephedrine", "epinephrine", "epipen", "escitalopram", "fentanyl", "fluoxetine",
-                                         "hydromorphone", "jenuvia", "keppra", "lansoprazole", "lisdexafetamine",
-                                         "lithium carbonate", "lorazepam", "lyrica", "memantine", "methotrexate",
-                                         "methylphenidate", "muloxicom", "naltrexone", "naproxen", "napthalene",
-                                         "nitrofurantoin", "olanzapine", "oxcarbazepine", "oxivir", "oxycodone",
-                                         "paliperidone", "palytoxin", "pantoloc", "perampanel", "percocet",
-                                         "perindopril", "prazosin", "prozac", "quetiapine", "rupall", "senokot",
-                                         "seroquel", "sertraline", "silenor", "somatropin", "speeping medication",
-                                         "tetracaine", "trazodone", "vyvanse", "wellbutrin", "xanax", "zantax",
-                                         "zoloft"]}}]),
+               pattern=[{"LOWER": {"IN": ["adderall", "adhd medication", "alprazolam", "alysena", "amitriptyline",
+                                          "amlodipine", "amoxicillin", "amphetamine", "antidepressant", "aripiprazole",
+                                          "atenolol", "ativan", "atomoxetine", "azilsartan", "baclofen", "benzocaine",
+                                          "benzodiazepines", "benzos", "biphentin", "bisoprolol",
+                                          "blood pressure medications",
+                                          "brotizolam", "bupropion", "cantharidin", "carbamazepine", "carbidopa",
+                                          "carvedilol",
+                                          "cetirizine", "chlorpheniramine", "cipralex", "citalopram", "clavulin",
+                                          "clobazam",
+                                          "clonazepam", "clonidine", "clopidogrel", "codeine", "colchicine", "concerta",
+                                          "crestor", "crystal meth", "cyclobenzaprine", "dexamethasone",
+                                          "dextromethorphan",
+                                          "diazepam", "dilaudid", "diphenhydramine", "domperidone", "duloxetine",
+                                          "effexor",
+                                          "ephedrine", "epi pen", "epinephrine", "epipen", "escitalopram", "estrogen",
+                                          "fentanyl", "fluconazole", "fluoxetine", "fosinopril", "gabapentin",
+                                          "guanfacine",
+                                          "hydrochlorothiazide", "hydromorphone", "insulin", "intuniv", "jenuvia",
+                                          "keflex",
+                                          "keppra", "lacosamide", "lamotrigine", "lansoprazole", "levetiracetam",
+                                          "levocarnitine",
+                                          "levodopa", "levothyroxine", "lisdexafetamine", "lisdexamfetamine",
+                                          "lisdexamfetamine",
+                                          "lithium", "lithium carbonate", "lorazepam", "lupron", "lyrica", "memantine",
+                                          "methadone", "methocarbamol", "methotrexate", "methylphenidate", "modafinil",
+                                          "muloxicom", "naltrexone", "naproxen", "napthalene", "nitrofurantoin",
+                                          "nortriptyline",
+                                          "olanzapine", "olanzapine", "ondansetron", "oxcarbazepine", "oxivir",
+                                          "oxycocet",
+                                          "oxycodone", "paliperidone", "palytoxin", "pantoloc", "perampanel",
+                                          "percocet",
+                                          "perindopril", "phenytoin", "prazosin", "pregabalin", "prescription",
+                                          "progestin",
+                                          "prozac", "quetiapine", "rabeprazole", "rupall", "senokot", "seroquel",
+                                          "sertraline",
+                                          "silenor", "somatropin", "speeping medication", "spironolactone", "synthroid",
+                                          "tamoxifen", "tamsulosin", "tegretol", "tetracaine", "tramadol", "tranexamic",
+                                          "trazadone", "trimebutine", "trinazapine", "vyvanse", "wellbutrin", "xanax",
+                                          "zantax", "zoloft", "zolpidem", "zopiclone",
+                                          ]}}]),
 
     TargetRule(literal="unknown",
                category="SUBSTANCE",
-               pattern=[{"LOWER": {"IN":["unknown", "unspecified"]}},
-                        {"LOWER": {"IN":["meds", "pills", "substance", "substances"]}}]),
+               pattern=[{"LOWER": {"IN": ["unknown", "unspecified"]}},
+                        {"LOWER": {"IN": ["meds", "pills", "substance", "substances"]}}]),
 
 ]
