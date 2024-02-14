@@ -6,3 +6,4 @@ pandas
 tqdm
 Levenshtein
 numpy
+sentence-transformers
