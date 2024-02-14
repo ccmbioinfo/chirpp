@@ -1,64 +1,9 @@
 import os
 
-import pandas as pd
-import re
-import spacy
 from medspacy.section_detection import SectionRule
 from tqdm import tqdm
 
-# TODO this need to be changed to reflect the new data format
-def read_crystal_excel_file(path, filters, additional_columns):
-    """
-    read crystal excel file
-    :param path: path of the excel file
-    :param additional_columns: what other columns to use other than CSN, MRN, Arrival date/time
-    note text and note type
-    :return: a pd.DataFrame of all the records of a specific visit
-    """
-    colnames = pd.read_excel(path, header=0, nrows=1)
-    if "MRN" in colnames:
-        df = pd.read_excel(path, header=0)
-    else:
-        df = pd.read_excel(path, header=1)
-        if "MRN" not in df:
-            raise ValueError("MRN column not found")
-    df = df[
-        [
-            "CSN",
-            "MRN",
-            "Arrival Date",
-            "Arrival Time",
-            "Note Text",
-            "Note Type",
-        ] + additional_columns
-    ]
-    df["Arrival Date"] = pd.to_datetime(df["Arrival Date"])
-    for key in list(filters.keys()):
-        df=df[df[key].isin(filters[key])].copy()
-    return df
-
-def remove_extra_spaces(text):
-    """
-    remove extra spaces and from the text other kinds of whitespace are handles elsewhere
-    :param text: note text, string
-    :return: modified note text, string
-    """
-    words = text.split()
-    new_text = ' '.join(words)
-    return new_text
-
-def replace_terms(text, to_fix):
-    """
-    replace abbreviations with longer form if present
-    :param text: note text ideally after the extra white spaces have been removed
-    :param to_fix: dictionary of abbreviations and their long form
-    :return:
-    """
-    for key in to_fix.keys():
-        to_find = "{}{}{}".format("(?<![a-zA-Z0-9])", key, "(?![a-zA-Z0-9])")
-        to_find = re.compile(to_find)
-        modified_text = re.sub(to_find, to_fix[key], text)
-        return modified_text
+from .utils import *
 
 
 class SectionRemover:
@@ -99,7 +44,6 @@ class SectionRemover:
         self.keep_sections = keep_sections
         self.rem_sections = remove_sections
 
-
     def remove_sections(self, text, keep_unlabelled):
         """
         remove/keep sections that are specified in the init method and return the new notes
@@ -124,13 +68,14 @@ class SectionRemover:
         clean_note = " ".join([str(note) for note in clean_note])
         return clean_note
 
+
 class Preprocess:
     """
     This is the class for preprocessing, it will get relevant note types, remove unwanted sections, fix abbreviations and will
     create 2 files one for summarization another for classification, the order of the notes will be the same in both files
     """
 
-    def __init__(self, note_file, note_types, term_to_replace):
+    def __init__(self, note_file, term_to_replace):
         """
         init method to get all the info needed to start preprocessing
         :param note_file: path to the excel file that is coming from EPIC
@@ -141,11 +86,10 @@ class Preprocess:
         else:
             raise FileNotFoundError("{} does not exist".format(note_file))
 
-        self.note_types=note_types
         self.terms_to_replace = term_to_replace
         self.raw_notes = None
 
-    def read_raw_notes(self, additional_columns=[], filters=None):
+    def read_raw_notes(self):
         """
         read unprocessed Crystal notes and filter out note types specified above
         :param path: path for the file
@@ -154,13 +98,31 @@ class Preprocess:
         take only ED provider notes from the Note type column
         :return: self with raw section filled in
         """
-        notes = read_crystal_excel_file(path=self.note_file, additional_columns=additional_columns, filters=filters)
-        notes = notes[notes["Note Type"].isin(self.note_types)]
+        notes = read_crystal_excel_file(path=self.note_file)
         self.raw_notes = notes
         return self
 
+    def get_relevant_notes(self, filters, additional_columns):
+        df=self.raw_notes
+        df = df[
+            [
+                "CSN",
+                "MRN",
+                "Arrival Date",
+                "Arrival Time",
+                "Note Text",
+                "Note Type",
+            ] + additional_columns
+            ]
+        df["Arrival Date"] = pd.to_datetime(df["Arrival Date"])
+        for key in list(filters.keys()):
+            df = df[df[key].isin(filters[key])].copy()
+
+        self.for_preprocess=df
+        return self
+
     def merge_notes(self, section_remover=None, include_cols=None, group_cols=["MRN", "Arrival Date"],
-                    orientation="front", keep_unlabelled=True):
+                    orientation="front", keep_unlabelled=True, anonymize=True, language_model="en_core_web_trf"):
         """
         merge repeated notes of same visit into a single note text to be used by llms
         :param section_remover: an instance of SectionRemover
@@ -170,7 +132,8 @@ class Preprocess:
         :param orientation: which way to add the extra columns, at the beginning of the note or at the end?, str
         :return: self with merged raw filled in
         """
-        notes_grouped = self.raw_notes.groupby(group_cols)
+        notes_grouped = self.for_preprocess.groupby(group_cols)
+
         merged_raw = []
         if include_cols is not None:  # to make sure that they are stored at the end, they do not change with the row
             # there will always be a single value
@@ -180,8 +143,9 @@ class Preprocess:
             df = group[group_cols].drop_duplicates()
             # I want to get the first files note at the top because I think that is more likely to contain the description
             # of what happened to the patient
+            #TODO the note line needs to be a parameter
             note_text = " ".join(
-                [str(x) for x in group.sort_values(by=["LINE"], ignore_index=True)["Note Text"].tolist()])
+                [str(x) for x in group.sort_values(by=["Note Line"], ignore_index=True)["Note Text"].tolist()])
 
             note_text = remove_extra_spaces(note_text)
 
@@ -205,13 +169,16 @@ class Preprocess:
                         else:
                             raise ValueError("orientation can be either front or back")
 
+            if anonymize:
+                name = df["Patient Name"].drop_duplicates().to_list()
+
+                note_text = deidentify(note_text, language_model, name)
 
             df["Note Text"] = note_text
             merged_raw.append(df)
         merged_raw = pd.concat(merged_raw)
-        #TODO need to make this less hacky
+        # TODO need to make this less hacky
         merged_raw = merged_raw[~merged_raw[["MRN", "Arrival Date"]].duplicated()]
-        return merged_raw
 
-
-
+        self.merged_raw=merged_raw
+        return self

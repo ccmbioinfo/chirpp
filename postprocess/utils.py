@@ -1,0 +1,466 @@
+import medspacy
+import spacy
+from medspacy.context import ConText
+
+from extra_contex_rules import context_rules
+from target_rules import *
+
+parse_nlp = spacy.load('en_core_web_trf', disable=["ner"])
+med_nlp = medspacy.load(medspacy_enable=['medspacy_sectionizer'])
+target = med_nlp.add_pipe("medspacy_target_matcher")
+
+context = ConText(med_nlp, rules="contex_rules.json")
+context.add(context_rules)
+target.add(substances)
+
+
+class MissingDataError(Exception):
+    pass
+
+
+def process_sex(sex):
+    """
+    chang M/F to male, female
+    :param sex:
+    :return:
+    """
+    if sex.lower() == "male":
+        sex = "M"
+    elif sex.lower() == "female":
+        sex = "F"
+    else:
+        sex = sex
+    return sex
+
+
+def scramble_mrn(mrn):
+    """
+    takes the mrn value of the note and runs a simple scramble
+    :param mrn: mrn
+    :return: scrambled mrn
+    """
+    mrn = str(mrn).strip()
+    last_digit = (int(mrn[-1]) + int(mrn[-2])) % 10
+    return mrn[:-2] + mrn[-1] + mrn[-2] + str(last_digit)
+
+
+def process_postal(postal):
+    """
+    remove the last 3 digits of postal code to increase privacy
+    :param postal: postal code
+    :return: truncated postal code
+    """
+    if type(postal) == str and len(postal) == 7 and postal[3] == " ":
+        postal = str(postal).split(" ")[0]
+    return postal
+
+
+def get_report_note(df):
+    """
+    fill in the Notes column with some relevant information, this is a legacy function, not sure what the notes column
+    entail in this case will need to clarify
+    :param df: all notes for a specific visit determined by "Arrival Date" and "MRN"
+    :return: string with relevant information
+    """
+    disposition = df["Disposition"].drop_duplicates().tolist()[0].lower()
+    merged_text = " ".join(df["Note Text"])
+    if disposition in [
+        'admit',
+        'deceased',
+        'lama',
+        'lwbr',
+        'lwbs',
+        'send to or',
+        'transfer to another facility'
+    ]:
+        return disposition
+    elif "Consults" in merged_text or 'Consult Follow Up' in merged_text:
+        return "Consult"
+    elif "ED Provider Notes" in df["Note Type"].tolist():
+        provider_note = " ".join(df["Note Text"][df["Note Type"] == "ED Provider Notes"])
+        idx = provider_note.lower().find("assessment and plan")
+        if idx == -1:
+            return ""
+        return provider_note[idx:]
+    else:
+        return ""
+
+
+def body_parts(dx):
+    """
+    take diagnosis and extract body parts
+    :param dx: diagnosis string
+    """
+
+    # for specific case of foreign body in soft tissue with no body part found
+    noBp = False
+
+    if (("foot" in dx and "phalan" not in dx) or ("metatarsal" in dx)) and ("toe" not in dx):
+        return 560
+    elif ((("head" in dx) and ("radial" not in dx and "forehead" not in dx)) or ("scalp" in dx) or ("skull" in dx)):
+        return 110
+    elif (("mandible" in dx) or ("face" in dx and "surface" not in dx) or ("eyelid" in dx) or ("periocular" in dx) or (
+            "area" in dx) or (("ear" in dx) and ("forearm" not in dx) and ("frenulum" not in dx)) or ("nose" in dx) or (
+                  "mouth" in dx) or ("jaw" in dx) or ("nasal" in dx)) or ("facial" in dx) or ("chin" in dx) or (
+            "cheek" in dx) or ("eyebrow" in dx) or ("lip" in dx and "slipped" not in dx and "frenulum" not in dx) or (
+            "forehead" in dx) or ("sinus" in dx) or ("orbital" in dx) or ("epistaxis" in dx) or (
+            "nose" in dx and "bleed" in dx) or ("palsy" in dx) or ("tympanic" in dx and "membrane" in dx):
+        return 120
+    elif (("internal" in dx) and ("mouth" in dx)) or ("palate" in dx) or ("tongue" in dx) or (
+            "tear" in dx and "frenulum" in dx and "lip" in dx):
+        return 130
+    elif ("neck" in dx) and (
+            "femur" not in dx and "radial" not in dx and "fibula" not in dx and "tibula" not in dx and "fib" not in dx and "tib" not in dx and "tibia" not in dx):
+        return 140
+    elif (("upper" in dx or "impact" in dx) and ("esophag" in dx)) or ("trachea" in dx) or ("pharyngeal" in dx) or (
+            "laryngeal" in dx):
+        return 141
+    elif ("cervical" in dx):
+        return 210
+    elif ("thoracic" in dx):
+        return 220
+    elif ("lumbar" in dx):
+        return 230
+    elif (("sacrum" in dx) or ("coccyx" in dx)):
+        return 240
+    elif ("spine" in dx):
+        return 250
+    elif (("thorax" in dx) or ("ribs" in dx) or ("lungs" in dx) or ("armpits" in dx) or ("lower esophagus" in dx) or (
+            "trachea" in dx) or ("chest" in dx) or ("aspirat" in dx)):
+        return 310
+    elif ("upper back" in dx) or ("trapeziu" in dx):
+        return 315
+    elif ("abdom" in dx) or ("colon" in dx) or ("foreign" in dx and ("ingestion" in dx or "intestine" in dx)) or (
+            "stomach" in dx) or ("kidney" in dx) or (
+            "sple" in dx and "cyst" not in dx and "splenomegaly" not in dx and "disease" not in dx) or (
+            "gastrointestinal tract" in dx) or ("liver" in dx):
+        return 321
+    elif ("lower back" in dx) or ("flank" in dx):
+        return 322
+    elif (("pelvis" in dx) or ("bladder" in dx) or ("buttocks" in dx) or ("rectum" in dx) or ("vagina" in dx) or (
+            "anal" in dx)):
+        return 323
+    elif (("penis" in dx) or ("circumcision" in dx) or ("penile" in dx) or ("scrot" in dx) or ("testic" in dx)):
+        return 324
+    elif ("groin" in dx):
+        return 325
+    elif ("back" in dx):
+        return 330
+    elif (("shoulder" in dx) or ("scapula" in dx)) or ("proximal" in dx and ("humerus" in dx or "humeral" in dx)):
+        return 410
+    elif ("clavic" in dx):
+        return 415
+    elif ((
+                  "upper arm" in dx or "humerus" in dx or "humeral" in dx) and "condyl" not in dx and "distal" not in dx and "proximal" not in dx):
+        return 420
+    elif ("elbow" in dx) or ("distal" in dx and ("humerus" in dx or "humeral" in dx)) or ("condyl" in dx) or (
+            "radial" in dx and ("head" in dx or "neck" in dx)) or ("ulna" in dx and ("head" in dx or "neck" in dx)) or (
+            "olecranon" in dx) or ("proximal" in dx and ("radius" in dx or "radial" in dx or "ulna" in dx)):
+        return 430
+    elif ((("forearm" in dx) or ("radius" in dx) or ("ulna" in dx)) or ("monteggia" in dx) or (
+            "lower" in dx and "arm" in dx) or ("radial" in dx)) and (
+            "distal" not in dx and "proximal" not in dx and "upper" not in dx):
+        return 440
+    elif ((("wrist" in dx) or ("carpal" in dx)) and ("metacarpal" not in dx)) or (
+            "distal" in dx and ("radius" in dx or "radial" in dx or "ulna" in dx)) or "scaphoid" in dx or (
+            "forearm" in dx and "lower" in dx):
+        return 450
+    elif (("hand" in dx and "phalan" not in dx) or ("metacarpal" in dx)) or ("boxer" in dx):
+        return 460
+    elif (("finger" in dx) or ("thumb" in dx) or "phalan" in dx) and ("foot" not in dx or "toe" not in dx):
+        return 470
+    elif ("hip" in dx) or (
+            ("neck" in dx) and ("femur" in dx) or ("proximal" in dx and ("femur" in dx or "femoral" in dx))) or (
+            "fem" in dx and "neck" in dx) or ("slipped" in dx and "femoral" in dx):
+        return 510
+    elif (("thigh" in dx) or ("distal" not in dx and "proximal" not in dx and ("femur" in dx or "femoral" in dx))):
+        return 520
+    elif (("knee" in dx) or ("patella" in dx) or ("distal" in dx and ("femur" in dx or "femoral" in dx)) or (
+            ("proximal" in dx) and ("tibia" in dx or "fibula" in dx)) or ("tibia" in dx and "plateau" in dx)):
+        return 530
+    elif (("lower leg" in dx) or ("tibia" in dx) or ("fibula" in dx)) and ("distal" not in dx and "proximal" not in dx):
+        return 540
+    elif (("ankle" in dx) or ("tarsal" in dx) or (("distal" in dx) and ("tibia" in dx or "fibula" in dx))) or (
+            "tillaux" in dx):
+        return 550
+    elif ("toe" in dx or "phalan" in dx):
+        return 570
+    else:
+        noBP = True
+    # For specific soft tissue foreign body case
+    if ("foreign" in dx or "fb" in dx) and noBP != True:
+        return False
+
+
+def injuries(dx):
+    """
+    extract injury type from the diagnosis, then the body part depending will come from the body_parts function
+    :param dx: diagnosis string
+    """
+    no = None
+    bp = None
+
+    if (("facial" in dx or "skull" in dx) and "fracture" in dx):
+        no = 42
+        bp = 135
+    elif ("subungual" in dx and "hematoma" in dx):
+        no = 10
+        bp = body_parts(dx)
+
+    if (("abrasion" in dx) and (
+            "globe" not in dx and "cornea" not in dx and "eye" not in dx and "ocular" not in dx and "canal" not in dx)) or (
+            ("bruis" in dx or "contusion" in dx or (
+                    "hematoma" in dx and "subdural" not in dx)) and "subungual" not in dx) or (
+            ("superficial" in dx) and (
+            "cut" not in dx and "laceration" not in dx and "burn" not in dx and "swelling" not in dx)) and (
+            ("kidney" not in dx) or ("spleen" not in dx) or ("splenic" not in dx)) or (
+            "abrasion" in dx and "eyelid" in dx):
+        no = 10
+        bp = body_parts(dx)
+    elif (("open wound" in dx or "laceration" in dx or ("minor" in dx and "cut" in dx) or (
+            "nail" in dx and "avulsion" in dx) or ("circumcision" in dx)) or ("fissure" in dx) or (
+                  "epistaxis" in dx) or ("self" in dx and "cut" in dx) or ("dehiscence" in dx and "wound" in dx) or (
+                  "nose" in dx and "bleed" in dx)) and (("liver" not in dx) and ("splenic" not in dx)) or (
+            "tear" in dx and "frenulum" in dx and "lip" in dx):
+        no = 11
+        bp = body_parts(dx)
+    elif (("fracture" in dx or "fx" in dx or "broken" in dx) and ("tooth" not in dx and "patholog" not in dx)):
+        no = natureOfInjury = 12
+        bp = body_parts(dx)
+    elif ("dislocation" in dx or "subluxation" in dx or ("slipped" in dx and "femoral" in dx)):
+        no = natureOfInjury = 13
+        bp = body_parts(dx)
+    elif ("sprain" in dx or "strain" in dx):
+        no = 14
+        bp = body_parts(dx)
+    elif ("nerve" in dx or "palsy" in dx) and ("oedema" not in dx):
+        no = 15
+        bp = body_parts(dx)
+    elif "blood vessel" in dx or "subungual" in dx:
+        no = 16
+        bp = body_parts(dx)
+    elif ("tendon" in dx or "muscle" in dx) and ("injury" in dx or "rupture" in dx or "sever" in dx):
+        no = 17
+        bp = body_parts(dx)
+    elif "crush" in dx:
+        no = 18
+        bp = body_parts(dx)
+    elif "amputation" in dx:
+        no = 19
+        bp = body_parts(dx)
+    elif (("burn" in dx or "corrosion" in dx) and (
+            "globe" not in dx and "cornea" not in dx and "eye" not in dx and "ocular" not in dx)):
+        no = 20
+        bp = body_parts(dx)
+    elif "frostbite" in dx:
+        no = 21
+        bp = body_parts(dx)
+    elif (("bite" in dx and "insect" not in dx) or (
+            "dog" in dx or "squirrel" in dx or "racoon" in dx or "cat" in dx or "human" in dx) and "medication" not in dx and "complication" not in dx):
+        no = 22
+        bp = body_parts(dx)
+    elif "electric" in dx:
+        no = 23
+        bp = body_parts(dx)
+    elif ((
+                  "corrosion" in dx or "chemical" in dx or "injur" in dx or "burn" in dx or "abrasion" in dx or "trauma" in dx or "hyphema" in dx) and (
+                  "globe" in dx or "cornea" in dx or "eye" in dx or "ocular" in dx)) or (
+            ("eye" in dx or "ocular" in dx) and "pain" in dx) or ("visual" in dx and "disturbance" in dx) or (
+            "conjunctival" in dx and ("haemorrhage" in dx or "hemorrhage" in dx)):
+        no = 24
+        bp = 135
+    elif (("dental" in dx or "tooth" in dx or "teeth" in dx) and (
+            "injury" in dx or "fracture" in dx or "trauma" in dx or "chip" in dx or "pain" in dx or "implant" in dx or "device" in dx or "avulsion" in dx or "impact" in dx)):
+        no = 25
+        bp = 135
+    elif (("kidney" in dx) or ("spleen" in dx) or ("splenic" in dx) or ("ear" in dx and "canal" in dx) or (
+            "liver" in dx) and ("injury" in dx or "abrasion" in dx or "laceration" in dx)) or (
+            "perforated tympanic membrane" in dx):
+        no = 26
+        bp = body_parts(dx)
+    elif (("pain" in dx and "sickle" not in dx and "disorder" not in dx) or (
+            "soft" in dx and "tissue" in dx and "cyst" not in dx and "mass" not in dx) or (
+                  "swelling" in dx and "eye" not in dx) or ("testicular" in dx and "torsion" in dx) or (
+                  "injury" in dx)) and ("infection" not in dx and "foreign" not in dx and "fb" not in dx):
+        no = 27
+        bp = body_parts(dx)
+    elif ("foreign" in dx and ("globe" in dx or "cornea" in dx or "eye" in dx or "ocular" in dx)):
+        no = 31
+        bp = 135
+    elif ((("foreign" in dx) and "ear" in dx or (
+            "auditory" in dx and "hallucination" not in dx)) and "earlobe" not in dx) or ("fb" in dx and "ear" in dx):
+        no = 32
+        bp = 135
+    elif ("foreign" in dx or "fb" in dx) and (
+            "nose" in dx or "nasal" in dx or "nostril" in dx or "sinus" in dx or "nare" in dx):
+        no = 33
+        bp = 135
+    elif (("foreign" in dx or "fb" in dx) and (
+            "respira" in dx or "aspiration" in dx or "choking" in dx or "air" in dx or "laryngeal" in dx)) or (
+            "gagging" in dx):
+        no = 34
+        bp = body_parts(dx)
+    elif ("foreign" in dx or "fb" in dx) and (
+            "pharyngeal" in dx or "intestine" in dx or "digestive" in dx or "stomach" in dx or "ingestion" in dx or "colon" in dx or "alimentary" in dx or "esophag" in dx or "swallow" in dx) or (
+            "impaction" in dx and "esophagus" in dx):
+        no = 35
+        bp = body_parts(dx)
+    elif (("foreign" in dx and "genito-urinary" in dx) or ("foreign" in dx and "bladder" in dx) or (
+            "foreign" in dx and "penis" in dx) or ("foreign" in dx and "urethra" in dx) or (
+                  "foreign" in dx and "vagina" in dx)):
+        no = 36
+        bp = body_parts(dx)
+    elif ("foreign" in dx or "fb" in dx) and (
+            "soft" in dx or "earlobe" in dx or "skin" in dx or (body_parts(dx) != False)) or ("splinter" in dx):
+        no = 37
+        bp = body_parts(dx)
+    elif ("minor" in dx and "head" in dx) or ("head" in dx and "injury" in dx) or ("head" in dx and "trauma" in dx):
+        no = 41
+        bp = 135
+    elif "concussion" in dx:
+        no = 42
+        bp = 135
+    elif ("intracranial" in dx) or (
+            "brain" in dx and ("tumor" not in dx and "tumour" not in dx and "cancer" not in dx)) or (
+            "subarachnoid" in dx) or ("subdural" in dx and "hematoma" in dx) or (
+            ("intraventricular" in dx) and ("haemorrhage" in dx or "hemorrhage" in dx)):
+        no = 43
+        bp = 135
+    elif ("poison" in dx or "toxic" in dx or "overdose" in dx or "ingestion" in dx):
+        no = 50
+        bp = 900
+    elif ("drown" in dx or "immersion" in dx):
+        no = 51
+        bp = 900
+    elif ("asphyxia" in dx) or ("choking" in dx):
+        no = 52
+        bp = 900
+    elif ("overexertion" in dx or ("heat" in dx and "stress" in dx) or ("cold" in dx and "stress" in dx)):
+        no = 53
+        bp = 900
+    elif ("no" in dx and "injury" in dx and "nose" not in dx):
+        no = 70
+        bp = 900
+    elif ("mania" in dx) or ("depressi" in dx) or ("aggressi" in dx) or ("psychosis" in dx) or (
+            "tic" in dx and len(dx) == 3) or (
+            ("stress" in dx or "anxiety" in dx) and ("fracture" not in dx and "respira" not in dx)) or (
+            "overdose" in dx) or ("hallucination" in dx) or ("anorexia" in dx) or ("poison" in dx) or (
+            "intoxication" in dx) or ((
+                                              "medication" in dx or "anger" in dx or "night" in dx or "behavi" in dx or "mental" in dx or "disorder" in dx or "social" in dx or "sleep" in dx or "learning" in dx or "mood" in dx or "weight" in dx) and (
+                                              "adjustment" in dx or "management" in dx or "terror" in dx or "reaction" in dx or "depressed" in dx or "concern" in dx or "bizarre" in dx or "mood" in dx or "food" in dx or "conversion" in dx or "eat" in dx or "depress" in dx or "motor" in dx or "tic" in dx or "compulsive" in dx or "problem" in dx or "change" in dx or "health" in dx or "abnormal" in dx or "aggressive" in dx or "disturbance" in dx or "difficult" in dx or "change" in dx or "loss" in dx)) or (
+            ("tic" in dx) and ("facial" in dx or "simple" in dx)) or ("suicid" in dx) or ("violent" in dx) or (
+            "ocd" in dx) or ("drug" in dx and "ingestion" in dx) or ("self" in dx and "harm" in dx) or (
+            "panic" in dx) or ("emotional" in dx) or ("disruptive" in dx) or ("temper" in dx) or (
+            "food" in dx and "refusal" in dx) or ("banging" in dx) or (
+            "behavi" in dx and ("change" in dx or "concern" in dx)) and ("neurologic" not in dx) or (
+            ("mental" in dx or "behavi" in dx) and "disorder" in dx):
+        no = 71
+        bp = 900
+    elif ("pulled" in dx and "elbow" in dx) or ("nursemaid" in dx):
+        no = 75
+        bp = 430
+    elif "caustic" in dx:
+        no = 76
+        bp = body_parts(dx)
+    elif (("stab" in dx and "instability" not in dx) or "bullet" in dx or "penetrat" in dx):
+        no = 77
+        bp = body_parts(dx)
+    elif ("injury" in dx or "trauma" in dx):
+        bp = body_parts(dx)
+
+    if ("tibia" in dx and "fibula" in dx):
+        no = natureOfInjury
+        bp = body_parts(dx)
+
+    return no, bp
+
+
+def get_substances(clean_text, complaint, problem, diagnosis, cc_filter, diag_pl_filter):
+    """
+    finds the substances that are mentioned in the text, this may or may not (usually is) the substance that has caused
+    the incident, this is done in a context aware manner so if someone says denies alcohol that one is not captured
+    :param clean_text: processed text from preprocessing
+    :param complaints: chief complaints, I find that most of the substances mentioned are clustered around a few complaints
+    :param problems: problem list a similar thing happens but on some occasions one contains the stuff and the other does not
+    :param diagnoses: same as above for completeness’s sake
+    :param cc_filter: these are filters for the chief complaint, it needs to contain at least one of these words
+    :param diag_pl_filter:same as above for diagnosis and problem list.
+    :return: returns a tuple, whether the event contains a substance and a list of substances that are mentioned sometimes
+    the script also picks up prescribed drugs, I am not sure how to avoid this right now without training a massive language model
+    """
+    complaint_bool = []
+
+    isin_comp = any([item in str(complaint).lower() for item in cc_filter])
+    if isin_comp:
+        complaint_bool.append(True)
+    else:
+        complaint_bool.append(False)
+
+    pl_diag_bool = []
+
+    isin_diag = any([item in str(diagnosis).lower() for item in diag_pl_filter])
+    isin_pl = any([item in str(problem).lower() for item in diag_pl_filter])
+    if isin_diag or isin_pl:
+        pl_diag_bool.append(True)
+    else:
+        pl_diag_bool.append(False)
+
+    if complaint_bool or pl_diag_bool:
+        has_substance = 1
+        doc = med_nlp(str(clean_text))
+        if len(doc.ents) > 0:
+            substance = list(set([str(ent).lower() for ent in doc.ents]))
+        else:
+            substance = None
+    else:
+        has_substance = 2
+        substance = "."
+
+    return substance, has_substance
+
+
+def get_intent(df, filters, filter_order):
+    """
+    return the intent that is described by chirpp, this ignores partner abuse because I have only seen a single case
+    :param df: the raw note data frame we need the whole thing because we will be looking at different columns which are
+    descibed in the filters
+    :param filters: filters and search keywords for each of the code, this is a dict where the keys are the chirpp code
+    and the values are the column name and keyword pairs,
+    :param filter_order: the order matters here because different intents (abuse vs accident) can return similar complaints
+    and other diagnosis, we start with the most common one and overwrite as we find the less common instances
+    :return: integer the intent code
+    """
+    intent_codes = [10] * df.shape[0]  # the default is 10 which is 90+% of the cases
+    for item in filter_order:  # get the intent codes in specific order
+        filts = filters[item]  # get the filters for that specific intent code
+        code = item  # this will be the code in the column
+        for column in filts.keys():  # for each column represented in the filter
+            data = df[column].tolist()
+            for i in range(len(data)):  # the column data in a list
+                for item in filts[column]:
+                    if item.lower() in str(data).lower():
+                        intent_codes[i] = code
+
+    return intent_codes
+
+
+def get_disposition(merged_notes, disposition):
+    """
+    return the disposition that is defined in the chirpp requirements, some of these are very hard to figure out
+    and those are ignored for the time being
+    :param merged_notes: merged notes from the raw files, this is a long piece of text
+    :param disposition: disposition from the raw files, this contains some of the codes that we are using in chirpp
+    :return: an integer that is the chirpp disp code
+    """
+    if disposition in ["LAMA", "LBT2", "LWBR", "LWBS"]:
+        disp_code = 1
+    elif disposition in ["Admit", "Transfer to Another Facility", "Send to OR"]:
+        disp_code = 7
+    elif disposition == "Deceased":
+        disp_code = 9
+    elif "Consults" in merged_notes or "Consult Follow up" in merged_notes:
+        disp_code = 6
+    else:
+        disp_code = None
+
+    return disp_code
