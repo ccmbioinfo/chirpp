@@ -111,7 +111,7 @@ post_process:
   report_header: ["MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "INJ DATE", "Hr", "Min", "AM/PM",
   "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "cosine_similarity", "W4P", "NO1", "BP1", "NO2",
   "BP2", "NO3", "BP3", "Notes", 'LOS', "DISP", "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
-  "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs"]
+  "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition"]
 
 
   note_types: ['Transfer In / Advice Note', 'ED Triage Notes', 'ED Trauma Note', 'ED Trauma Notes',
@@ -120,13 +120,13 @@ post_process:
 
   intent_filters:
     13:
-      sections_removed: ["CAS", "SCAN"]
+      pre_processed: ["CAS", "SCAN"]
       Diagnosis: ["non-accidental", "child abuse", "neglect"]
     12:
-      sections_removed: ["sexual"]
+      pre_processed: ["sexual"]
       Diagnosis: ["sexual"]
     15:
-      sections_removed: ["assault", "attacked", "stabbed", "punched", "assaulted",
+      pre_processed: ["assault", "attacked", "stabbed", "punched", "assaulted",
                          "shot", "stab", "beaten", "assaulted"]
       Diagnosis: ["assault"]
     11:

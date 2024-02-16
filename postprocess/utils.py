@@ -1,15 +1,16 @@
 import medspacy
 import spacy
 from medspacy.context import ConText
+import os
 
-from extra_contex_rules import context_rules
-from target_rules import *
+from .extra_contex_rules import context_rules
+from .target_rules import *
 
 parse_nlp = spacy.load('en_core_web_trf', disable=["ner"])
 med_nlp = medspacy.load(medspacy_enable=['medspacy_sectionizer'])
 target = med_nlp.add_pipe("medspacy_target_matcher")
 
-context = ConText(med_nlp, rules="contex_rules.json")
+context = ConText(med_nlp, rules=os.path.join(os.path.dirname(__file__), 'context_rules.json'))
 context.add(context_rules)
 target.add(substances)
 
@@ -62,8 +63,9 @@ def get_report_note(df):
     :param df: all notes for a specific visit determined by "Arrival Date" and "MRN"
     :return: string with relevant information
     """
-    disposition = df["Disposition"].drop_duplicates().tolist()[0].lower()
-    merged_text = " ".join(df["Note Text"])
+    disposition = df["Disposition"].drop_duplicates().astype(str).tolist()[0].lower()
+    texts = [str(text) for text in df["Note Text"].to_list()]
+    merged_text = " ".join(texts)
     if disposition in [
         'admit',
         'deceased',
@@ -77,7 +79,8 @@ def get_report_note(df):
     elif "Consults" in merged_text or 'Consult Follow Up' in merged_text:
         return "Consult"
     elif "ED Provider Notes" in df["Note Type"].tolist():
-        provider_note = " ".join(df["Note Text"][df["Note Type"] == "ED Provider Notes"])
+        provider_notes=[str(text) for text in df["Note Text"][df["Note Type"] == "ED Provider Notes"].to_list()]
+        provider_note = " ".join(provider_notes)
         idx = provider_note.lower().find("assessment and plan")
         if idx == -1:
             return ""
@@ -388,32 +391,23 @@ def get_substances(clean_text, complaint, problem, diagnosis, cc_filter, diag_pl
     :return: returns a tuple, whether the event contains a substance and a list of substances that are mentioned sometimes
     the script also picks up prescribed drugs, I am not sure how to avoid this right now without training a massive language model
     """
-    complaint_bool = []
 
     isin_comp = any([item in str(complaint).lower() for item in cc_filter])
-    if isin_comp:
-        complaint_bool.append(True)
-    else:
-        complaint_bool.append(False)
-
-    pl_diag_bool = []
-
     isin_diag = any([item in str(diagnosis).lower() for item in diag_pl_filter])
     isin_pl = any([item in str(problem).lower() for item in diag_pl_filter])
-    if isin_diag or isin_pl:
-        pl_diag_bool.append(True)
-    else:
-        pl_diag_bool.append(False)
 
-    if complaint_bool or pl_diag_bool:
-        has_substance = 1
+    if isin_diag or isin_pl or isin_comp:
+        has_substance=1
+    else:
+        has_substance=2
+
+    if has_substance==1:
         doc = med_nlp(str(clean_text))
         if len(doc.ents) > 0:
-            substance = list(set([str(ent).lower() for ent in doc.ents]))
+            substance = ",".join(list(set([str(ent).lower() for ent in doc.ents])))
         else:
             substance = None
     else:
-        has_substance = 2
         substance = "."
 
     return substance, has_substance
@@ -438,7 +432,7 @@ def get_intent(df, filters, filter_order):
             data = df[column].tolist()
             for i in range(len(data)):  # the column data in a list
                 for item in filts[column]:
-                    if item.lower() in str(data).lower():
+                    if item.lower() in str(data[i]).lower():
                         intent_codes[i] = code
 
     return intent_codes

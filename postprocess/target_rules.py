@@ -12,7 +12,7 @@ substances = [
                    "IN": ['cannabinoid', 'cannabinoids', 'cannabis', 'cbd', 'cocaine', 'crack cocaine', 'crack',
                           'downers', 'ecstasy', 'edible', 'edibles', 'got high', 'heroin', 'heroine', 'lsd', 'mdma',
                           'meth', 'methamphetamine', 'molly', 'morphine', 'mushroom', 'mushrooms', 'n-bomb', 'opioid',
-                          'pcp', 'poppers', 'poppers', 'pot', 'psilocybin', 'recreational drugs', 'shrooms',
+                          'poppers', 'poppers', 'pot', 'psilocybin', 'recreational drugs', 'shrooms',
                           'stoner patch',
                           'street drugs', 'tetrahydrocannabinol', 'thc choclate', 'thc gummies', 'thc', 'uppers',
                           'weed', ]}}]),

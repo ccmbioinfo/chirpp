@@ -2,3 +2,11 @@
 *.ipynb_checkpoints
 *.ipynb
 *pycache*
+distilbert
+all-mpnet-base-v2
+inference_NOTE_DETAIL_01012024_070343.csv.utf8.csv.tsv
+inference.tsv
+NOTE*
+t5-small
+training
+*test*
