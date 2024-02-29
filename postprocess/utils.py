@@ -448,7 +448,7 @@ def get_disposition(merged_notes, disposition):
     """
     if disposition in ["LAMA", "LBT2", "LWBR", "LWBS"]:
         disp_code = 1
-    elif disposition in ["Admit", "Transfer to Another Facility", "Send to OR"]:
+    elif disposition in ["Admit", "Transfer to Another Facility", "Send to OR", "Send to Clinic"]:
         disp_code = 7
     elif disposition == "Deceased":
         disp_code = 9

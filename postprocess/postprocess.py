@@ -20,7 +20,7 @@ class PostProcess:
 
         raw_notes["Arrival Date"] = pd.to_datetime(raw_notes["Arrival Date"])
         inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"])
-        #inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
+        inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
         inference_notes = inference_notes[['MRN', 'Arrival Date', 'probs', 'to_summarize', 'PHAC Narrative',
                                            'cosine_similarity', 'is_injury', 'is_inside', 'is_sports', 'inside_prob',
                                            'sports_prob', 'pre_processed']]
@@ -72,8 +72,11 @@ class PostProcess:
         template = pd.concat(template)
 
         self.template = template
-        self.sheet1 = self.template[pd.isna(self.template["cosine_similarity"])]
-        self.sheet2 = self.template[~pd.isna(self.template["cosine_similarity"])]
+        #TODO add pos_cases based on chief complaint to sheet 2
+        self.sheet1 = self.template[(pd.isna(self.template["cosine_similarity"])) |
+                                    (~self.template["Chief Complaint"].isin(params["pos_complaints"])) ]
+        self.sheet2 = self.template[(~pd.isna(self.template["cosine_similarity"])) |
+                                    (self.template["Chief Complaint"].isin(params["pos_complaints"]))]
 
     # TODO add devices, sports_code, vehicles
     def autofill(self):
@@ -93,7 +96,7 @@ class PostProcess:
             "IN": [],
         }
 
-        for complaint, note, problem, diag, disp in zip(complaints, notes, problems, diags, dispositions):
+        for complaint, note, merged, problem, diag, disp in zip(complaints, notes, merged_notes, problems, diags, dispositions):
             substance, has_substance = get_substances(note, complaint, problem, diag,
                                                       self.params["cc_filter"],
                                                       self.params["diag_pl_filter"])
@@ -101,13 +104,13 @@ class PostProcess:
             diag = str(diag).lower()
             no, bp = injuries(diag)
 
-            report_disposition = get_disposition(merged_notes, disp)
+            report_disposition = get_disposition(merged, disp)
 
             autofill_cols["sub"].append(has_substance)
             autofill_cols["subID"].append(substance)
-            autofill_cols["NO1"] = no
-            autofill_cols["BP1"] = bp
-            autofill_cols["DISP"] = report_disposition
+            autofill_cols["NO1"].append(no)
+            autofill_cols["BP1"].append(bp)
+            autofill_cols["DISP"].append(report_disposition)
 
         autofill_cols["IN"] = get_intent(self.sheet2, self.params["intent_filters"], self.params["intent_order"])
 
@@ -127,6 +130,8 @@ class PostProcess:
             raise FileExistsError("{} already exisits".format(path))
 
         self.sheet2=self.sheet2.drop(columns=["pre_processed", "Disposition"])
+        self.sheet2["sd1"]=-1
+        self.sheet2["SPORTS CODE"]=4
 
         with pd.ExcelWriter(path) as out:
             self.sheet1.to_excel(out, sheet_name="Sheet 1", index=False)

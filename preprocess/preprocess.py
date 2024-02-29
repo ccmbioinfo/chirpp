@@ -1,7 +1,6 @@
 import os
 
 from medspacy.section_detection import SectionRule
-from tqdm import tqdm
 
 from .utils import *
 
@@ -69,6 +68,8 @@ class SectionRemover:
         return clean_note
 
 
+#TODO need to add triage notes here and then add the Note Type as another grouping column
+# also need to add some addition section headers for removal to remove doc names and abbreviations
 class Preprocess:
     """
     This is the class for preprocessing, it will get relevant note types, remove unwanted sections, fix abbreviations and will
@@ -139,13 +140,13 @@ class Preprocess:
             # there will always be a single value
             group_cols = group_cols + include_cols
 
-        for _, group in tqdm(notes_grouped):
+        for _, group in notes_grouped:
             df = group[group_cols].drop_duplicates()
             # I want to get the first files note at the top because I think that is more likely to contain the description
             # of what happened to the patient
             #TODO the note line needs to be a parameter
             note_text = " ".join(
-                [str(x) for x in group.sort_values(by=["Note Line"], ignore_index=True)["Note Text"].tolist()])
+                [str(x) for x in group.sort_values(by=["Note Type", "Note Line"], ignore_index=True)["Note Text"].tolist()])
 
             note_text = remove_extra_spaces(note_text)
 

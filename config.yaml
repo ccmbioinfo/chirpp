@@ -2,7 +2,7 @@
 #TODO add read args to notes
 
 
-##### PRE PRORCESS
+##### PRE PROCESS
 pre_process:
   device: "cuda:0"
   inference_sections: ["history_of_present_illness", "observation_and_plan", "chief_complaint", "problem_list", "diagnosis"]
@@ -16,10 +16,12 @@ pre_process:
   section_rules: "preprocess/preprocess_patterns.json"
   lang_model: "en_core_web_trf"
   note_types:
-    Note Type: ["ED Provider Notes"]
+    Note Type: ["ED Provider Notes", "ED Triage Notes"]
   include_cols: ["Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "Note Line"]
   group_cols: ["MRN", "Arrival Date"]
   orientation: "front"
+  keep_unlabelled: True
+  anonymize: False
 
   terms_to_fix:  {'hx': 'history', '#': 'fracture', 'c/o': 'complaining of', 'f/u': 'follow up',
   'fu': 'follow up', 'w': 'with', 'ortho': 'orthopaedics', 'psych': 'psychiatry', 'cardio': 'cardiology',
@@ -42,7 +44,7 @@ pre_process:
   'TTC': 'Toronto Transit Commission', 'FMD': 'family medical doctor', 'PCP': 'primary care provider',
   'PMD': 'doctor of primary medicine', 'MVC': 'motor vehicle collision', 'EMS': 'Emergency Medical Services',
   'EKG': 'electrocardiogram', 'ECG': 'electrocardiogram', 'NBNB': 'non-bloody, non-bilious',
-  'dw': 'discussed with', 'RUQ': 'right upper quadrant' }
+  'dw': 'discussed with', 'RUQ': 'right upper quadrant', 'yo': 'year old' }
 
 
 
@@ -54,7 +56,7 @@ inference:
   truncation: true
   cutoff: 0.9
 
-  #TODO
+  #TODO change to production paths
   classification_model: "distilbert"
   summarization_model: "t5-small"
   distance_model: "all-mpnet-base-v2"
@@ -109,9 +111,9 @@ post_process:
 
 
   report_header: ["MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "INJ DATE", "Hr", "Min", "AM/PM",
-  "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "cosine_similarity", "W4P", "NO1", "BP1", "NO2",
+  "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "W4P", "NO1", "BP1", "NO2",
   "BP2", "NO3", "BP3", "Notes", 'LOS', "DISP", "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
-  "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition"]
+  "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition", "cosine_similarity"]
 
 
   note_types: ['Transfer In / Advice Note', 'ED Triage Notes', 'ED Trauma Note', 'ED Trauma Notes',
