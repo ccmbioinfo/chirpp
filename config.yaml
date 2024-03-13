@@ -1,10 +1,11 @@
 
 #TODO add read args to notes
 
+device: "cuda:0"
 
 ##### PRE PROCESS
 pre_process:
-  device: "cuda:0"
+
   inference_sections: ["history_of_present_illness", "observation_and_plan", "chief_complaint", "problem_list", "diagnosis"]
   autofill_sections: ["history_of_present_illness", "chief_complaint", "problem_list", "diagnosis"]
 
@@ -12,12 +13,12 @@ pre_process:
   "patient_education", "medications", "allergies", "allergy", "imaging", "hospital_course",
   "labs_and_studies", "comments", "social_history",
   "physical_exam", "other", "user_index"]
-
+  line_col: "Note Line"
   section_rules: "preprocess/preprocess_patterns.json"
-  lang_model: "en_core_web_trf"
+  lang_model: "models/spacy"
   note_types:
     Note Type: ["ED Provider Notes", "ED Triage Notes"]
-  include_cols: ["Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "Note Line"]
+  include_cols: ["Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "LOS"]
   group_cols: ["MRN", "Arrival Date"]
   orientation: "front"
   keep_unlabelled: True
@@ -54,13 +55,12 @@ inference:
   include_labels: false
   max_length: 128
   truncation: true
-  cutoff: 0.9
+  cutoff: 0.90
 
-  #TODO change to production paths
-  classification_model: "distilbert"
-  summarization_model: "t5-small"
-  distance_model: "all-mpnet-base-v2"
-  zshot_model: "facebook/bart-large-mnli"
+  classification_model: "models/distilbert"
+  summarization_model: "models/t5-small"
+  distance_model: "models/all-mpnet-base-v2"
+  zshot_model: "models/bart-large-mnli"
 
   note_col: "Note Text"
   use_chirpp: true

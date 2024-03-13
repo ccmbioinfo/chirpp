@@ -1,13 +1,17 @@
 import argparse as arg
+import os
 from datetime import datetime
 
 import pandas as pd
 import yaml
+from torch.cuda import is_available
+
+from transformers import logging as hf_logging
+hf_logging.set_verbosity_error()
 
 from inference.inference import Inference
-from preprocess.preprocess import SectionRemover, Preprocess
 from postprocess.postprocess import PostProcess
-
+from preprocess.preprocess import SectionRemover, Preprocess
 
 parser = arg.ArgumentParser(description='Preprocess notes file for inference')
 parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
@@ -20,6 +24,11 @@ args = parser.parse_args()
 with open(args.config) as f:
     params = yaml.safe_load(f)
 
+if is_available() and params["device"] == "cuda:0":
+    device = "cuda:0"
+else:
+    device = "cpu"
+
 # preprocessing, remove unwanted sections and keep raw notes in memory
 if "additional_rules" in list(params["pre_process"].keys()):
     additional_rules = params["pre_process"]["additional_rules"]
@@ -28,12 +37,13 @@ else:
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Section remover")
 
-section_remover_for_inference = SectionRemover(lang_model=params["pre_process"]["lang_model"],
+
+section_remover_for_inference = SectionRemover(lang_model=os.path.abspath(params["pre_process"]["lang_model"]),
                                                remove_sections=params["pre_process"]["remove_sections"],
                                                keep_sections=params["pre_process"]["inference_sections"],
                                                rules_json=params["pre_process"]["section_rules"],
                                                additional_rules=additional_rules,
-                                               gpu=params["pre_process"]["device"])
+                                               gpu=device)
 
 # remove sections and generate inference notes these will be used for inference
 
@@ -43,27 +53,33 @@ preprocessed_notes = Preprocess(args.notes, params["pre_process"]["terms_to_fix"
 
 preprocessed_notes = preprocessed_notes.read_raw_notes()
 
+additional_columns=params["pre_process"]["include_cols"]+[params["pre_process"]["line_col"]]
+
 preprocessed_notes = preprocessed_notes.get_relevant_notes(filters=params["pre_process"]["note_types"],
-                                                           additional_columns=params["pre_process"]["include_cols"])
-## Inference
-preprocessed_notes = preprocessed_notes.merge_notes(section_remover_for_inference,
-                                                 params["pre_process"]["include_cols"],
-                                                 params["pre_process"]["group_cols"],
-                                                 params["pre_process"]["orientation"],
-                                                 keep_unlabelled=params["pre_process"]["keep_unlabelled"],
-                                                 anonymize=params["pre_process"]["anonymize"])
-#TODO there probably is a better way than to create a copy
-inference_notes=preprocessed_notes.merged_raw.copy()
+                                                           additional_columns=additional_columns)
+include_cols=params["pre_process"]["include_cols"]
+include_cols.append(params["pre_process"]["line_col"])
+preprocessed_notes = preprocessed_notes.merge_notes(section_remover=section_remover_for_inference,
+                                                    include_cols=include_cols,
+                                                    group_cols=params["pre_process"]["group_cols"],
+                                                    orientation=params["pre_process"]["orientation"],
+                                                    keep_unlabelled=params["pre_process"]["keep_unlabelled"],
+                                                    anonymize=params["pre_process"]["anonymize"],
+                                                    language_model=params["pre_process"]["lang_model"],
+                                                    line_col=params["pre_process"]["line_col"])
+
+# TODO there probably is a better way than to create a copy
+inference_notes = preprocessed_notes.merged_raw.copy()
 
 inference_notes = inference_notes[~pd.isnull(inference_notes[params["inference"]["note_col"]])].copy()
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Collecting inference models")
 # set up inference instance
-infer_notes = Inference(classification_model=params["inference"]["classification_model"],
-                        summarization_model=params["inference"]["summarization_model"],
-                        zshot_model=params["inference"]["zshot_model"],
+infer_notes = Inference(classification_model=os.path.abspath(params["inference"]["classification_model"]),
+                        summarization_model=os.path.abspath(params["inference"]["summarization_model"]),
+                        zshot_model=os.path.abspath(params["inference"]["zshot_model"]),
                         num_labels=params["inference"]["num_labels"],
-                        device=params["pre_process"]["device"])  # device should probably be a global param
+                        device=device)
 
 # get model probabilities
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying")
@@ -96,8 +112,7 @@ if params["inference"]["use_chirpp"]:
     inference_notes["probs"][inference_notes[params["inference"]["chirpp_col"]] == "CHIRPP ICON"] = 1
 
 # re-order because we just changed the probabilities
-inference_notes = inference_notes.sort_values(by=["probs"], ascending=False)
-inference_notes["to_summarize"] = inference_notes["probs"] >= params["inference"]["cutoff"]
+inference_notes["to_summarize"] = inference_notes["probs"] >= prob_cutoff
 
 # get summaries of positive cases
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing")
@@ -111,7 +126,7 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Calculating c
 
 distances = infer_notes.calculate_cosine_distances(params["inference"]["distance_model"],
                                                    inference_notes[params["inference"]["note_col"]][
-                                                   inference_notes["to_summarize"]],
+                                                       inference_notes["to_summarize"]],
                                                    summaries)
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Running 0 shot inference")
@@ -129,29 +144,31 @@ is_inside = infer_notes.zshot(
 
 # to be used in autofill
 inference_notes["PHAC Narrative"] = None
-inference_notes["cosine_similarity"]=None
-inference_notes["is_injury"]=None
-inference_notes["is_inside"]=None
-inference_notes["inside_prob"]=None
-inference_notes["is_sports"]=None
-inference_notes["sports_prob"]=None
+inference_notes["cosine_similarity"] = None
+inference_notes["is_injury"] = None
+inference_notes["is_inside"] = None
+inference_notes["inside_prob"] = None
+inference_notes["is_sports"] = None
+inference_notes["sports_prob"] = None
 
 inference_notes["PHAC Narrative"][inference_notes["to_summarize"]] = summaries
 inference_notes["cosine_similarity"][inference_notes["to_summarize"]] = distances
 inference_notes["is_injury"][inference_notes["to_summarize"]] = is_injury
 
-#TODO the check needs to refer to the config yaml and that needs to be a dict
-inference_notes["is_inside"][inference_notes["to_summarize"]] = [[False if item=="indoors" else True for item in is_inside[0]]]
+# TODO the check needs to refer to the config yaml and that needs to be a dict
+inference_notes["is_inside"][inference_notes["to_summarize"]] = [
+    [2 if item == "indoors" else 1 for item in is_inside[0]]]
 inference_notes["inside_prob"][inference_notes["to_summarize"]] = [item for item in is_inside[1]]
-inference_notes["is_sports"][inference_notes["to_summarize"]] = [False if item=="not involving sports" else True for item in is_sports[0]]
+inference_notes["is_sports"][inference_notes["to_summarize"]] = [False if item == "not involving sports" else True for
+                                                                 item in is_sports[0]]
 inference_notes["sports_prob"][inference_notes["to_summarize"]] = [item for item in is_sports[1]]
 
 # post processing to generate the final output
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Report")
 
-params["post_process"]["pos_complaints"]=params["inference"]["pos_complaints"]
-postprocess=PostProcess(preprocessed_notes.raw_notes, inference_notes, params["post_process"])
-postprocess=postprocess.autofill()
+params["post_process"]["pos_complaints"] = params["inference"]["pos_complaints"]
+postprocess = PostProcess(preprocessed_notes.raw_notes, inference_notes, params["post_process"])
+postprocess = postprocess.autofill()
 postprocess.create_report(args.outname)
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Done!")

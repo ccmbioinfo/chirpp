@@ -68,7 +68,6 @@ class SectionRemover:
         return clean_note
 
 
-#TODO need to add triage notes here and then add the Note Type as another grouping column
 # also need to add some addition section headers for removal to remove doc names and abbreviations
 class Preprocess:
     """
@@ -104,7 +103,7 @@ class Preprocess:
         return self
 
     def get_relevant_notes(self, filters, additional_columns):
-        df=self.raw_notes
+        df = self.raw_notes
         df = df[
             [
                 "CSN",
@@ -119,11 +118,12 @@ class Preprocess:
         for key in list(filters.keys()):
             df = df[df[key].isin(filters[key])].copy()
 
-        self.for_preprocess=df
+        self.for_preprocess = df
         return self
 
     def merge_notes(self, section_remover=None, include_cols=None, group_cols=["MRN", "Arrival Date"],
-                    orientation="front", keep_unlabelled=True, anonymize=True, language_model="en_core_web_trf"):
+                    orientation="front", keep_unlabelled=True, anonymize=True, language_model="en_core_web_trf",
+                    line_col="Note Line"):
         """
         merge repeated notes of same visit into a single note text to be used by llms
         :param section_remover: an instance of SectionRemover
@@ -144,9 +144,10 @@ class Preprocess:
             df = group[group_cols].drop_duplicates()
             # I want to get the first files note at the top because I think that is more likely to contain the description
             # of what happened to the patient
-            #TODO the note line needs to be a parameter
+
             note_text = " ".join(
-                [str(x) for x in group.sort_values(by=["Note Type", "Note Line"], ignore_index=True)["Note Text"].tolist()])
+                [str(x) for x in
+                 group.sort_values(by=["Note Type", line_col], ignore_index=True)["Note Text"].tolist()])
 
             note_text = remove_extra_spaces(note_text)
 
@@ -181,5 +182,5 @@ class Preprocess:
         # TODO need to make this less hacky
         merged_raw = merged_raw[~merged_raw[["MRN", "Arrival Date"]].duplicated()]
 
-        self.merged_raw=merged_raw
+        self.merged_raw = merged_raw
         return self

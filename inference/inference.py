@@ -12,6 +12,7 @@ class Inference:
     This will perform the inference for classification and summarization
     """
 
+#TODO add cosinde distance model
     def __init__(self, classification_model, summarization_model, zshot_model, num_labels, device=None):
         """
         init method, specify pipeline parameters for classification and summarization

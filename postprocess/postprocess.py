@@ -45,18 +45,13 @@ class PostProcess:
             group_df["Chief Complaint"] = data["Chief Complaint"].drop_duplicates()
             group_df["W4P"] = 0  # this is hardcoded because it almost never happens
             group_df["Notes"] = get_report_note(data)
-            #group_df["LOS"] = data["Length of Stay (Hours)"].drop_duplicates()
+            group_df["LOS"] = data["LOS"].drop_duplicates()
             group_df["Diagnosis"] = data["Diagnosis"].drop_duplicates()
             group_df["probs"] = data["probs"].drop_duplicates()
             group_df["Problem List"]=data["Problem List"].drop_duplicates()
             group_df["cosine_similarity"]=data["cosine_similarity"].drop_duplicates()
             group_df["PHAC Narrative"] = data["PHAC Narrative"].drop_duplicates()
-            inside=data["is_inside"].drop_duplicates().to_list()[0]
-            if inside:
-                io=1
-            else:
-                io=2
-            group_df["I/O"] =io
+            group_df["I/O"] =data["is_inside"].drop_duplicates()
             narrative = []
             texts=[str(text) for text in data["Note Text"].to_list()]
             for note_type, note_text in zip(data["Note Type"].tolist(), texts):
@@ -72,7 +67,7 @@ class PostProcess:
         template = pd.concat(template)
 
         self.template = template
-        #TODO add pos_cases based on chief complaint to sheet 2
+
         self.sheet1 = self.template[(pd.isna(self.template["cosine_similarity"])) |
                                     (~self.template["Chief Complaint"].isin(params["pos_complaints"])) ]
         self.sheet2 = self.template[(~pd.isna(self.template["cosine_similarity"])) |
