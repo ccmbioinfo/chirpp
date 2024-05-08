@@ -22,10 +22,9 @@ class PostProcess:
         inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"])
         inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
         inference_notes = inference_notes[['MRN', 'Arrival Date', 'probs', 'to_summarize', 'PHAC Narrative',
-                                           'cosine_similarity', 'is_injury', 'is_inside', 'is_sports', 'inside_prob',
-                                           'sports_prob', 'pre_processed']]
+                                           'cosine_similarity', 'pre_processed', 'io', 'intent', 'sub']]
         merged = raw_notes.merge(inference_notes, how="inner", on=["MRN", "Arrival Date"])
-        merged["Arrival Time"]=pd.to_datetime(merged["Arrival Time"])
+        merged["Arrival Time"]=pd.to_datetime(merged["Arrival Time"].astype(str))
         merged = merged.groupby(["CSN", "MRN", "Arrival Date", "Arrival Time"])
 
         report_df = pd.DataFrame(columns=self.params["report_header"])
@@ -51,13 +50,19 @@ class PostProcess:
             group_df["Problem List"]=data["Problem List"].drop_duplicates()
             group_df["cosine_similarity"]=data["cosine_similarity"].drop_duplicates()
             group_df["PHAC Narrative"] = data["PHAC Narrative"].drop_duplicates()
-            group_df["I/O"] =data["is_inside"].drop_duplicates()
-            narrative = []
-            texts=[str(text) for text in data["Note Text"].to_list()]
-            for note_type, note_text in zip(data["Note Type"].tolist(), texts):
-                if note_type in self.params["note_types"]:
-                    if not pd.isna(note_text):
-                        narrative.append(note_type + "\n\n" + note_text)
+            group_df["I/O"] =data["io"].drop_duplicates()
+            group_df["IN"]=data["intent"]
+            group_df["sub"]=data["sub"]
+
+            
+            for_narrative=data[data["Note Type"].isin(self.params["note_types"])]
+            for_narrative["Note Type"]=pd.Categorical(for_narrative["Note Type"], 
+                                                     categories=self.params["note_types"])
+            for_narrative=for_narrative.sort_values(by = "Note Type")
+            narrative=[]
+            for note_type, note_text in zip(for_narrative["Note Type"].tolist(), for_narrative["Note Text"].tolist()):               
+                if not pd.isna(note_text):
+                    narrative.append(str(note_type) + "\n\n" + str(note_text))
             narrative = "\n\n".join(narrative)
             group_df["SK Narrative"] = narrative
             group_df["Disposition"]=data['Disposition'].drop_duplicates().astype(str)
@@ -73,7 +78,7 @@ class PostProcess:
         self.sheet2 = self.template[(~pd.isna(self.template["cosine_similarity"])) |
                                     (self.template["Chief Complaint"].isin(params["pos_complaints"]))]
 
-    # TODO add devices, sports_code, vehicles
+    #TODO sd1-5, area, location, place, Inj date, Inj time, sports code
     def autofill(self):
         complaints = self.sheet2["Chief Complaint"].to_list()
         notes = self.sheet2["pre_processed"].to_list()
@@ -81,33 +86,29 @@ class PostProcess:
         diags = self.sheet2["Diagnosis"]
         merged_notes = self.sheet2["Notes"].to_list()
         dispositions = self.sheet2["Disposition"].to_list()
+        has_substance=self.sheet2["sub"].to_list()
 
         autofill_cols = {
-            "sub": [],
             "subID": [],
             "NO1": [],
             "BP1": [],
             "DISP": [],
-            "IN": [],
         }
-
-        for complaint, note, merged, problem, diag, disp in zip(complaints, notes, merged_notes, problems, diags, dispositions):
-            substance, has_substance = get_substances(note, complaint, problem, diag,
-                                                      self.params["cc_filter"],
-                                                      self.params["diag_pl_filter"])
-
+        for complaint, note, merged, problem, diag, disp in zip(complaints, notes, merged_notes, problems, diags,
+                                                                dispositions):
             diag = str(diag).lower()
-            no, bp = injuries(diag)
+            if complaint=="Medical Device Problem":
+                no1=99
+                bp1=999
+            else:
+                no1, bp1 = injuries(diag)
+            report_disposition = get_disposition(merged, disp, no1, bp1)
+            subid=get_substances(note, has_substance)
 
-            report_disposition = get_disposition(merged, disp)
-
-            autofill_cols["sub"].append(has_substance)
-            autofill_cols["subID"].append(substance)
-            autofill_cols["NO1"].append(no)
-            autofill_cols["BP1"].append(bp)
+            autofill_cols["NO1"].append(no1)
+            autofill_cols["BP1"].append(bp1)
+            autofill_cols["subID"].append(subid)
             autofill_cols["DISP"].append(report_disposition)
-
-        autofill_cols["IN"] = get_intent(self.sheet2, self.params["intent_filters"], self.params["intent_order"])
 
         for key in autofill_cols.keys():
             self.sheet2[key] = autofill_cols[key]
@@ -127,6 +128,8 @@ class PostProcess:
         self.sheet2=self.sheet2.drop(columns=["pre_processed", "Disposition"])
         self.sheet2["sd1"]=-1
         self.sheet2["SPORTS CODE"]=4
+        self.sheet2[(self.sheet2["NO1"]==12) & (self.sheet2["BP1"]==110)]["NO2"]=42
+        self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["BP2"] = 135
 
         with pd.ExcelWriter(path) as out:
             self.sheet1.to_excel(out, sheet_name="Sheet 1", index=False)

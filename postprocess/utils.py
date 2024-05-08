@@ -1,7 +1,8 @@
+import os
+
 import medspacy
 import spacy
 from medspacy.context import ConText
-import os
 
 from .extra_contex_rules import context_rules
 from .target_rules import *
@@ -79,7 +80,7 @@ def get_report_note(df):
     elif "Consults" in merged_text or 'Consult Follow Up' in merged_text:
         return "Consult"
     elif "ED Provider Notes" in df["Note Type"].tolist():
-        provider_notes=[str(text) for text in df["Note Text"][df["Note Type"] == "ED Provider Notes"].to_list()]
+        provider_notes = [str(text) for text in df["Note Text"][df["Note Type"] == "ED Provider Notes"].to_list()]
         provider_note = " ".join(provider_notes)
         idx = provider_note.lower().find("assessment and plan")
         if idx == -1:
@@ -378,31 +379,19 @@ def injuries(dx):
     return no, bp
 
 
-def get_substances(clean_text, complaint, problem, diagnosis, cc_filter, diag_pl_filter):
+# TODO change this into inference
+def get_substances(clean_text, has_substance, nlp=med_nlp):
     """
     finds the substances that are mentioned in the text, this may or may not (usually is) the substance that has caused
     the incident, this is done in a context aware manner so if someone says denies alcohol that one is not captured
     :param clean_text: processed text from preprocessing
-    :param complaints: chief complaints, I find that most of the substances mentioned are clustered around a few complaints
-    :param problems: problem list a similar thing happens but on some occasions one contains the stuff and the other does not
-    :param diagnoses: same as above for completeness’s sake
-    :param cc_filter: these are filters for the chief complaint, it needs to contain at least one of these words
-    :param diag_pl_filter:same as above for diagnosis and problem list.
-    :return: returns a tuple, whether the event contains a substance and a list of substances that are mentioned sometimes
-    the script also picks up prescribed drugs, I am not sure how to avoid this right now without training a massive language model
+    :param has_substance: this is the output of substance model label.
+    :return: returns the name of the substance, sometimes this may end up being a prescribed substance that is not the cause
+    of the incident, still working on that.
     """
 
-    isin_comp = any([item in str(complaint).lower() for item in cc_filter])
-    isin_diag = any([item in str(diagnosis).lower() for item in diag_pl_filter])
-    isin_pl = any([item in str(problem).lower() for item in diag_pl_filter])
-
-    if isin_diag or isin_pl or isin_comp:
-        has_substance=1
-    else:
-        has_substance=2
-
-    if has_substance==1:
-        doc = med_nlp(str(clean_text))
+    if has_substance == 1:
+        doc = nlp(str(clean_text))
         if len(doc.ents) > 0:
             substance = ",".join(list(set([str(ent).lower() for ent in doc.ents])))
         else:
@@ -410,35 +399,10 @@ def get_substances(clean_text, complaint, problem, diagnosis, cc_filter, diag_pl
     else:
         substance = "."
 
-    return substance, has_substance
+    return substance
 
 
-def get_intent(df, filters, filter_order):
-    """
-    return the intent that is described by chirpp, this ignores partner abuse because I have only seen a single case
-    :param df: the raw note data frame we need the whole thing because we will be looking at different columns which are
-    descibed in the filters
-    :param filters: filters and search keywords for each of the code, this is a dict where the keys are the chirpp code
-    and the values are the column name and keyword pairs,
-    :param filter_order: the order matters here because different intents (abuse vs accident) can return similar complaints
-    and other diagnosis, we start with the most common one and overwrite as we find the less common instances
-    :return: integer the intent code
-    """
-    intent_codes = [10] * df.shape[0]  # the default is 10 which is 90+% of the cases
-    for item in filter_order:  # get the intent codes in specific order
-        filts = filters[item]  # get the filters for that specific intent code
-        code = item  # this will be the code in the column
-        for column in filts.keys():  # for each column represented in the filter
-            data = df[column].tolist()
-            for i in range(len(data)):  # the column data in a list
-                for item in filts[column]:
-                    if item.lower() in str(data[i]).lower():
-                        intent_codes[i] = code
-
-    return intent_codes
-
-
-def get_disposition(merged_notes, disposition):
+def get_disposition(merged_notes, disposition, no1, bp1):
     """
     return the disposition that is defined in the chirpp requirements, some of these are very hard to figure out
     and those are ignored for the time being
@@ -449,7 +413,10 @@ def get_disposition(merged_notes, disposition):
     if disposition in ["LAMA", "LBT2", "LWBR", "LWBS"]:
         disp_code = 1
     elif disposition in ["Admit", "Transfer to Another Facility", "Send to OR", "Send to Clinic"]:
-        disp_code = 7
+        if no1 == 71 and bp1 == 900:
+            disp_code = 8
+        else:
+            disp_code = 7
     elif disposition == "Deceased":
         disp_code = 9
     elif "Consults" in merged_notes or "Consult Follow up" in merged_notes:

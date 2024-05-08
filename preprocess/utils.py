@@ -31,7 +31,8 @@ def split(ls, max_size, combine=True, join_w=" "):
     else:
         return split_list
 
-def deidentify(note_text, language_model, name):
+#TODO add replace str to params
+def deidentify(note_text, language_model, name, replace_str="pt"):
     """
 
     :param df:
@@ -72,16 +73,16 @@ def deidentify(note_text, language_model, name):
                     dist = ls.distance(word, str(person_word))
                     if len(word) < 4:  # no typos
                         if dist == 0:
-                            note_text = note_text.replace(person, "[redacted]")
+                            note_text = note_text.replace(person, replace_str)
                     elif len(word) < 6:
                         if dist <= 1:
-                            note_text = note_text.replace(person, "[redacted]")
+                            note_text = note_text.replace(person, replace_str)
                     else:
                         if dist <= 2:
-                            note_text = note_text.replace(person, "[redacted]")
+                            note_text = note_text.replace(person, replace_str)
         # removing these because they do not contain any important information contain patient info
         note_text = re.sub("mrn(:| )*[0-9]+", "[redacted]", note_text)
-        note_text = re.sub(" dob(:| )*[0-9]+/[0-9]+/[0-9]+", "[redacted]", note_text)
+        note_text = re.sub(" dob(:| )*[0-9]+/[0-9]+/[0-9]+", replace_str, note_text)
 
         # note_df=note_df.drop(columns=["Patient Name", "CSN"])
         return note_text
