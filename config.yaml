@@ -13,7 +13,8 @@ pre_process:
   "patient_education", "medications", "allergies", "allergy", "imaging", "hospital_course",
   "labs_and_studies", "comments", "social_history",
   "physical_exam", "other", "user_index"]
-  line_col: "Note Line"
+  
+  line_col: "LINE"
   section_rules: "preprocess/preprocess_patterns.json"
   lang_model: "models/spacy"
   note_types:
@@ -24,7 +25,7 @@ pre_process:
   keep_unlabelled: True
   anonymize: False
 
-  terms_to_fix:  {'hx': 'history', '#': 'fracture', 'c/o': 'complaining of', 'f/u': 'follow up',
+  terms_to_fix:  {'hx': 'history of', '#': 'fracture', 'c/o': 'complaining of', 'f/u': 'follow up',
   'fu': 'follow up', 'w': 'with', 'ortho': 'orthopaedics', 'psych': 'psychiatry', 'cardio': 'cardiology',
   'ophtho': 'ophthalmology', 'ENT': 'otolaryngology', 'plastics': 'plastic surgery', 'physio': 'physiotherapy',
   'heme': 'hematology', 'rx': 'prescription', 'tx': 'treatment', 'd': 'days ago', 'mo': 'months', 'lac': 'laceration',
@@ -45,7 +46,7 @@ pre_process:
   'TTC': 'Toronto Transit Commission', 'FMD': 'family medical doctor', 'PCP': 'primary care provider',
   'PMD': 'doctor of primary medicine', 'MVC': 'motor vehicle collision', 'EMS': 'Emergency Medical Services',
   'EKG': 'electrocardiogram', 'ECG': 'electrocardiogram', 'NBNB': 'non-bloody, non-bilious',
-  'dw': 'discussed with', 'RUQ': 'right upper quadrant', 'yo': 'year old' }
+  'dw': 'discussed with', 'RUQ': 'right upper quadrant', 'yo': 'year old', 'co': 'complaining of', 'bl': 'bilateral'}
 
 
 
@@ -57,14 +58,29 @@ inference:
   truncation: true
   cutoff: 0.90
 
+## normally there are 8 claasses but partner abuse is non-existent
+
   classification_model: "models/distilbert"
   summarization_model: "models/t5-small"
   distance_model: "models/all-mpnet-base-v2"
-  zshot_model: "models/bart-large-mnli"
-
+  io_model: "models/distilbert_io"
+  intent_model: "models/albert_xxl_intent"
+  substance_model: "models/albert_xxl_sub"
+  
+  intent_labels: 7 
+  io_labels: 2
+  classification_labels: 2
+  substance_labels: 2
+  io_cutoff: 0.9
+  intent_cutoff: 0.8
+  subs_cutoff: 0.8
+  
+  intent_label_dict: {'0': '10', '1':'11', '2':'12', '3':'13', '4':'15', '5':'16', '6':'19'}
+  
   note_col: "Note Text"
   use_chirpp: true
   chirpp_col: "CHIRPP Icon"
+  anonymize_summaries: true
 
 
   pos_complaints: [ "Oral / Esophageal Foreign Body", "Upper Extremity Injury", "Lower Extremity Injury",
@@ -83,15 +99,8 @@ inference:
     "Isolated Chest Trauma - Penetrating", "Substance Withdrawal", "Electrical Injury", "Frostbite / Cold Injury",
     "Cardiac Arrest (Traumatic)", "Foreign Body in Eye" ]
 
-  inj_list: ["bruise", "abrasion", "laceration", "wound", "cut", "fracture", "dislocation",
-             "sprain", "strain", "trauma", "injury", "burn", "exposure", "hemorrahage",
-             "foreign body", "concussion", "poisoning", "drowning", "amputation", "rupture",
-             "tear", "contusion", "avulsion", "accident", "bite", "blister", "bruised", "bruising",
-             "dislocated", "electric", "electrical", "hematoma", "heamatoma", "fractured"]
+ #TODO need to add pos_based on diagnosis
 
-
-  sports_labels: ["involving sports", "not involving sports"]
-  io_labels: ["indoors", "outdoors"]
 
   final_columns: ["MRN", "Arrival Date", "Note Text", "probs", "summary", "cosine_similarity", "Diagnosis",
                "Problem List", "Chief Complaint"]
@@ -111,34 +120,16 @@ post_process:
 
 
   report_header: ["MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "INJ DATE", "Hr", "Min", "AM/PM",
-  "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "W4P", "NO1", "BP1", "NO2",
+  "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "W4P", "NO1", "BP1", "NO2", 'veh', 'veh p',
   "BP2", "NO3", "BP3", "Notes", 'LOS', "DISP", "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
   "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition", "cosine_similarity"]
 
+  note_types: ['ED Triage Notes', 'ED Provider Notes', 'PS Initial Consult', 'Consults', 
+              'Consult Follow Up', 'Admission', 'Discharge Summary', 'Progress Notes', 
+              'Assessment & Plan Note',  'ED Trauma Note', 'ED Trauma Notes',
+              'ED Procedure Note', 'Procedures','Op Note', 'Transfer In / Advice Note']
+              
 
-  note_types: ['Transfer In / Advice Note', 'ED Triage Notes', 'ED Trauma Note', 'ED Trauma Notes',
-            'ED Provider Notes', 'Assessment & Plan Note','ED Procedure Note', 'Procedures',
-            'PS Initial Consult', 'Consults', 'Consult Follow Up', 'Op Note', 'Admission', 'Progress Notes', 'Discharge Summary']
-
-  intent_filters:
-    13:
-      pre_processed: ["CAS", "SCAN"]
-      Diagnosis: ["non-accidental", "child abuse", "neglect"]
-    12:
-      pre_processed: ["sexual"]
-      Diagnosis: ["sexual"]
-    15:
-      pre_processed: ["assault", "attacked", "stabbed", "punched", "assaulted",
-                         "shot", "stab", "beaten", "assaulted"]
-      Diagnosis: ["assault"]
-    11:
-      Chief Complaint: ["Depression / Suicidal / Deliberate Self Harm", "Anxiety / Situational Crisis"]
-      Diagnosis: ["suicidial", "suicide", "self harm", "self-harm", "depression", "overdose"]
-    19:
-      Diagnosis: ["post-operative", "postoperative"]
-      Chief Complaint: ["Post-operative Complications", "Medical Device Problem"]
-
-  intent_order: [11, 15, 12, 13, 19]
 
 
 
