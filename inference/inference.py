@@ -13,7 +13,9 @@ class Inference:
     """
 
 #TODO add cosinde distance model
-    def __init__(self, classification_model, summarization_model, zshot_model, num_labels, device=None):
+    def __init__(self, classification_model, summarization_model, classification_labels,
+                 intent_model, intent_labels, substance_model, substance_labels, io_model, io_labels,
+                 device=None):
         """
         init method, specify pipeline parameters for classification and summarization
         :param classification_model: model directory for the trained classification model
@@ -25,25 +27,43 @@ class Inference:
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         if classification_model is not None:
-            classification_dir = classification_model
-            model = AutoModelForSequenceClassification.from_pretrained(classification_dir, num_labels=num_labels)
-            tokenizer = AutoTokenizer.from_pretrained(classification_dir, padding="max_length")
+            model = AutoModelForSequenceClassification.from_pretrained(classification_model, num_labels=classification_labels)
+            tokenizer = AutoTokenizer.from_pretrained(classification_model, padding="max_length")
             self.clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
         else:
             raise NoModelError("no classification model provided")
 
         if summarization_model is not None:
-            summarization_dir = summarization_model
-            model = AutoModelForSeq2SeqLM.from_pretrained(summarization_dir)
-            tokenizer = AutoTokenizer.from_pretrained(summarization_dir, padding="max_length", truncation=True)
+            model = AutoModelForSeq2SeqLM.from_pretrained(summarization_model)
+            tokenizer = AutoTokenizer.from_pretrained(summarization_model, padding="max_length", truncation=True)
             self.summarizer = pipeline("summarization", model=model, tokenizer=tokenizer, device=device)
         else:
             raise NoModelError("no summarization model provided")
 
-        if zshot_model is not None:
-            self.zhot_pipeline = pipeline("zero-shot-classification", zshot_model, device=device)
+        if intent_model is not None:
+            model = AutoModelForSequenceClassification.from_pretrained(intent_model,
+                                                                       num_labels=intent_labels)
+            tokenizer = AutoTokenizer.from_pretrained(intent_model, padding="max_length")
+            self.intent_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
         else:
-            raise NoModelError("no zero shot model provided")
+            raise NoModelError("There is no intent model")
+
+        if substance_model is not None:
+            model = AutoModelForSequenceClassification.from_pretrained(substance_model,
+                                                                       num_labels=substance_labels,
+                                                                       ignore_mismatched_sizes=True)
+            tokenizer = AutoTokenizer.from_pretrained(substance_model, padding="max_length")
+            self.substance_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
+        else:
+            raise NoModelError("There is no substance model")
+
+        if io_model is not None:
+            model = AutoModelForSequenceClassification.from_pretrained(io_model,
+                                                                       num_labels=io_labels)
+            tokenizer = AutoTokenizer.from_pretrained(io_model, padding="max_length")
+            self.io_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
+        else:
+            raise NoModelError("There is no inside outside model")
 
     def classify(self, notes, note_col="Note Text", include_labels=False):
         """
@@ -114,28 +134,75 @@ class Inference:
 
         return distances
 
-    def zshot(self, notes, candidate_labels):
-        preds = self.zhot_pipeline(notes, candidate_labels=candidate_labels)
-        labels = [pred["labels"][0] for pred in preds]
-        probs = [pred["scores"][0] for pred in preds]
-        return labels, probs
+    def get_intent(self, notes, notes_col, label_dict, cutoff=0.8):
+        to_infer=notes[notes_col].to_list()
+        labels = self.intent_clf(to_infer, padding=True, truncation=True)
 
-    def is_injury(self, diags, injlist):
-        """
-        determine if this is an injury, this is here because it is not a column of the report, autofill is only
-        concerned about filling in report columns
-        :param diags: list of diagnosis from EPIC
-        :param injlist: list of keywords that indicate injury, this is part of config.yaml
-        :return: a boolean list
-        """
-        yes_no = []
-        for diag in diags:
-            is_inj = False
-            for item in diag.split(" "):
-                item = item.lower()
-                for inj in injlist:
-                    if item in injlist:
-                        is_inj = True
-            yes_no.append(is_inj)
+        edited_labels = []
+        for lab in labels:
+            edited = lab["label"]
+            edited = edited.replace("LABEL_", "")
+            actual= label_dict[edited]
+            edited_labels.append(int(actual))
 
-        return yes_no
+        scores = []
+        for lab in labels:
+            scores.append(lab["score"])
+
+        results=[]
+        for lab, scr in zip(edited_labels, scores):
+            if scr >= cutoff:
+                results.append(lab)
+            else:
+                results.append(None)
+
+        return results
+
+
+    def get_substance(self, notes, notes_col, cutoff=0.9):
+        to_infer = notes[notes_col].to_list()
+        labels = self.substance_clf(to_infer, padding=True, truncation=True)
+
+        edited_labels = []
+        for lab in labels:
+            edited = lab["label"]
+            edited = edited.replace("LABEL_", "")
+            edited = int(edited) + 1
+            edited_labels.append(edited)
+
+        scores = []
+        for lab in labels:
+            scores.append(lab["score"])
+
+        results = []
+        for lab, scr in zip(edited_labels, scores):
+            if scr >= cutoff:
+                results.append(lab)
+            else:
+                results.append(None)
+
+        return results
+
+    def get_io(self, notes, notes_col, cutoff=0.9):
+        to_infer = notes[notes_col].to_list()
+        labels = self.io_clf(to_infer, padding=True, truncation=True)
+
+        edited_labels = []
+        for lab in labels:
+            edited = lab["label"]
+            edited = edited.replace("LABEL_", "")
+            edited = int(edited)+1
+            edited_labels.append(edited)
+
+        scores = []
+        for lab in labels:
+            scores.append(lab["score"])
+
+        results = []
+        for lab, scr in zip(edited_labels, scores):
+            if scr >= cutoff:
+                results.append(lab)
+            else:
+                results.append(None)
+
+        return results
