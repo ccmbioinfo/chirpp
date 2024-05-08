@@ -5,13 +5,16 @@ from datetime import datetime
 import pandas as pd
 import yaml
 from torch.cuda import is_available
-
 from transformers import logging as hf_logging
+
 hf_logging.set_verbosity_error()
 
 from inference.inference import Inference
 from postprocess.postprocess import PostProcess
 from preprocess.preprocess import SectionRemover, Preprocess
+from preprocess.utils import deidentify
+
+# TODO for summaries
 
 parser = arg.ArgumentParser(description='Preprocess notes file for inference')
 parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
@@ -37,7 +40,6 @@ else:
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Section remover")
 
-
 section_remover_for_inference = SectionRemover(lang_model=os.path.abspath(params["pre_process"]["lang_model"]),
                                                remove_sections=params["pre_process"]["remove_sections"],
                                                keep_sections=params["pre_process"]["inference_sections"],
@@ -53,11 +55,11 @@ preprocessed_notes = Preprocess(args.notes, params["pre_process"]["terms_to_fix"
 
 preprocessed_notes = preprocessed_notes.read_raw_notes()
 
-additional_columns=params["pre_process"]["include_cols"]+[params["pre_process"]["line_col"]]
+additional_columns = params["pre_process"]["include_cols"] + [params["pre_process"]["line_col"]]
 
 preprocessed_notes = preprocessed_notes.get_relevant_notes(filters=params["pre_process"]["note_types"],
                                                            additional_columns=additional_columns)
-include_cols=params["pre_process"]["include_cols"]
+include_cols = params["pre_process"]["include_cols"]
 include_cols.append(params["pre_process"]["line_col"])
 preprocessed_notes = preprocessed_notes.merge_notes(section_remover=section_remover_for_inference,
                                                     include_cols=include_cols,
@@ -77,8 +79,13 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Collecting in
 # set up inference instance
 infer_notes = Inference(classification_model=os.path.abspath(params["inference"]["classification_model"]),
                         summarization_model=os.path.abspath(params["inference"]["summarization_model"]),
-                        zshot_model=os.path.abspath(params["inference"]["zshot_model"]),
-                        num_labels=params["inference"]["num_labels"],
+                        classification_labels=params["inference"]["classification_labels"],
+                        intent_model=os.path.abspath(params["inference"]["intent_model"]),
+                        intent_labels=params["inference"]["intent_labels"],
+                        substance_model=os.path.abspath(params["inference"]["substance_model"]),
+                        substance_labels=params["inference"]["substance_labels"],
+                        io_model=os.path.abspath(params["inference"]["io_model"]),
+                        io_labels=params["inference"]["io_labels"],
                         device=device)
 
 # get model probabilities
@@ -122,6 +129,13 @@ summaries = infer_notes.summarize(inference_notes[inference_notes["to_summarize"
                                   params["inference"]["truncation"],
                                   params["inference"]["max_length"])
 
+if params['inference']['anonymize_summaries'] and not params["preprocess"]['anonymize']:
+    new_summaries=[]
+    for sumr, name in zip(summaries, inference_notes["Patient Name"].to_list()):
+        deidentified=deidentify(sumr, params["pre_process"]["lang_model"], [name])
+        new_summaries.append(deidentified)
+    summaries=new_summaries
+
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Calculating cosine similarities")
 
 distances = infer_notes.calculate_cosine_distances(params["inference"]["distance_model"],
@@ -129,39 +143,39 @@ distances = infer_notes.calculate_cosine_distances(params["inference"]["distance
                                                        inference_notes["to_summarize"]],
                                                    summaries)
 
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Running 0 shot inference")
-
-is_injury = infer_notes.is_injury(inference_notes["Diagnosis"][inference_notes["to_summarize"]].astype(str),
-                                  params["inference"]["inj_list"])
-
-is_sports = infer_notes.zshot(
-    inference_notes[params["inference"]["note_col"]][inference_notes["to_summarize"]].to_list(),
-    candidate_labels=params["inference"]["sports_labels"])
-
-is_inside = infer_notes.zshot(
-    inference_notes[params["inference"]["note_col"]][inference_notes["to_summarize"]].to_list(),
-    candidate_labels=params["inference"]["io_labels"])
-
-# to be used in autofill
-inference_notes["PHAC Narrative"] = None
-inference_notes["cosine_similarity"] = None
-inference_notes["is_injury"] = None
-inference_notes["is_inside"] = None
-inference_notes["inside_prob"] = None
-inference_notes["is_sports"] = None
-inference_notes["sports_prob"] = None
+inference_notes["PHAC Narrative"]="None"
+inference_notes["cosine_similarity"]=None
 
 inference_notes["PHAC Narrative"][inference_notes["to_summarize"]] = summaries
 inference_notes["cosine_similarity"][inference_notes["to_summarize"]] = distances
-inference_notes["is_injury"][inference_notes["to_summarize"]] = is_injury
 
-# TODO the check needs to refer to the config yaml and that needs to be a dict
-inference_notes["is_inside"][inference_notes["to_summarize"]] = [
-    [2 if item == "indoors" else 1 for item in is_inside[0]]]
-inference_notes["inside_prob"][inference_notes["to_summarize"]] = [item for item in is_inside[1]]
-inference_notes["is_sports"][inference_notes["to_summarize"]] = [False if item == "not involving sports" else True for
-                                                                 item in is_sports[0]]
-inference_notes["sports_prob"][inference_notes["to_summarize"]] = [item for item in is_sports[1]]
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying intent")
+
+intent = infer_notes.get_intent(notes=inference_notes[inference_notes["to_summarize"]],
+                                notes_col=params["inference"]["note_col"],
+                                label_dict=params["inference"]["intent_label_dict"],
+                                cutoff=params["inference"]["intent_cutoff"])
+
+inference_notes["intent"] = None
+inference_notes["intent"][inference_notes["to_summarize"]] = intent
+
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying substance use")
+
+substance = infer_notes.get_substance(notes=inference_notes[inference_notes["to_summarize"]],
+                                      notes_col=params["inference"]["note_col"],
+                                      cutoff=params["inference"]["subs_cutoff"])
+inference_notes["sub"] = None
+inference_notes[inference_notes["to_summarize"]]["sub"] = substance
+
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying inside/outside")
+
+io = infer_notes.get_io(notes=inference_notes[(inference_notes["to_summarize"]) & (inference_notes["intent"] == 10)],
+                        notes_col=params["inference"]["note_col"],
+                        cutoff=params["inference"]["io_cutoff"])
+
+inference_notes["io"] = None
+inference_notes["io"][(inference_notes["to_summarize"]) & (inference_notes["intent"] == 10)] = io
+
 
 # post processing to generate the final output
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Report")
