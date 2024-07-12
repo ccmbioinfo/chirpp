@@ -1,11 +1,17 @@
 import os
+import subprocess
+import sys
 
 import medspacy
 import spacy
 from medspacy.context import ConText
 
-from .extra_contex_rules import context_rules
-from .target_rules import *
+from chirpp.postprocess.extra_contex_rules import context_rules
+from chirpp.postprocess.target_rules import *
+
+if not spacy.util.is_package("en_core_web_trf"):
+    subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_trf"])
+
 
 parse_nlp = spacy.load('en_core_web_trf', disable=["ner"])
 med_nlp = medspacy.load(medspacy_enable=['medspacy_sectionizer'])
@@ -24,7 +30,7 @@ def process_sex(sex):
     """
     chang M/F to male, female
     :param sex:
-    :return:
+    :return: sex
     """
     if sex.lower() == "male":
         sex = "M"
@@ -89,7 +95,7 @@ def get_report_note(df):
     else:
         return ""
 
-
+#TODO this needs to be majorly refactored or all these need to be represented somewhere else where it's more readable
 def body_parts(dx):
     """
     take diagnosis and extract body parts
@@ -195,7 +201,7 @@ def body_parts(dx):
     if ("foreign" in dx or "fb" in dx) and noBP != True:
         return False
 
-
+#TODO same as body parts
 def injuries(dx):
     """
     extract injury type from the diagnosis, then the body part depending will come from the body_parts function

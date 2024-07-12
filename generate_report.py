@@ -1,3 +1,4 @@
+#! python
 import argparse as arg
 import os
 from datetime import datetime
@@ -9,12 +10,10 @@ from transformers import logging as hf_logging
 
 hf_logging.set_verbosity_error()
 
-from inference.inference import Inference
-from postprocess.postprocess import PostProcess
-from preprocess.preprocess import SectionRemover, Preprocess
-from preprocess.utils import deidentify
-
-# TODO for summaries
+from chirpp.inference.inference import Inference
+from chirpp.postprocess.postprocess import PostProcess
+from chirpp.preprocess.preprocess import SectionRemover, Preprocess
+from chirpp.preprocess.utils import deidentify
 
 parser = arg.ArgumentParser(description='Preprocess notes file for inference')
 parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
@@ -27,7 +26,7 @@ args = parser.parse_args()
 with open(args.config) as f:
     params = yaml.safe_load(f)
 
-if is_available() and params["device"] == "cuda:0":
+if is_available():
     device = "cuda:0"
 else:
     device = "cpu"
@@ -40,7 +39,7 @@ else:
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Section remover")
 
-section_remover_for_inference = SectionRemover(lang_model=os.path.abspath(params["pre_process"]["lang_model"]),
+section_remover_for_inference = SectionRemover(lang_model="en_core_web_trf",
                                                remove_sections=params["pre_process"]["remove_sections"],
                                                keep_sections=params["pre_process"]["inference_sections"],
                                                rules_json=params["pre_process"]["section_rules"],
@@ -67,7 +66,7 @@ preprocessed_notes = preprocessed_notes.merge_notes(section_remover=section_remo
                                                     orientation=params["pre_process"]["orientation"],
                                                     keep_unlabelled=params["pre_process"]["keep_unlabelled"],
                                                     anonymize=params["pre_process"]["anonymize"],
-                                                    language_model=params["pre_process"]["lang_model"],
+                                                    language_model="en_core_web_trf",
                                                     line_col=params["pre_process"]["line_col"])
 
 # TODO there probably is a better way than to create a copy
@@ -129,7 +128,7 @@ summaries = infer_notes.summarize(inference_notes[inference_notes["to_summarize"
                                   params["inference"]["truncation"],
                                   params["inference"]["max_length"])
 
-if params['inference']['anonymize_summaries'] and not params["preprocess"]['anonymize']:
+if params['inference']['anonymize_summaries'] and not params["pre_process"]['anonymize']:
     new_summaries=[]
     for sumr, name in zip(summaries, inference_notes["Patient Name"].to_list()):
         deidentified=deidentify(sumr, params["pre_process"]["lang_model"], [name])
@@ -165,7 +164,7 @@ substance = infer_notes.get_substance(notes=inference_notes[inference_notes["to_
                                       notes_col=params["inference"]["note_col"],
                                       cutoff=params["inference"]["subs_cutoff"])
 inference_notes["sub"] = None
-inference_notes[inference_notes["to_summarize"]]["sub"] = substance
+inference_notes["sub"][inference_notes["to_summarize"]] = substance
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying inside/outside")
 

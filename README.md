@@ -1,8 +1,52 @@
 # Sickkids ED CHIRPP processing pipeline
 
-This repository contains the processing pipelien of EPIC notes for Canadian government reporting requirements. There are
-some assumptions made in this pipeline that may or may not be applicable to other EMRs and even other EPIC instances. 
-These issues will be adressed as needed. 
+This repos is still work in progress, here are some guidelines as to how to use this repo:
+You can follow along run_example.ipynb to see how to use the pipeline interactively. This is for an older version 
+where we assume that we have an excel file that has been exported from EPIC. Things have changed slightly since then.
+Now we do get some text files daily from the epic servers for cases that happened 3 days ago. These are in the VM 
+(see below)
+
+## Important files/folders
+
+All the pre-trained models should be in the models folder. I have moved these models to the vm and I will share 
+their location in a separate email. 
+
+## How to set up the enviroment
+
+The current enviroment.yaml is bloated. There is another yaml file called enviroment_cpu.yaml, this will install the 
+dependencies for cpu processing only. Considering there is no cpu access for the vm this should be enough for now. I 
+am adding sqlachemy to the list so we can start building the database as well. 
+
+```python
+conda env create -f enviroment_cpu.yaml
+```
+
+This will create a conda envrionment named `chirpp` and after the initial setup (this may take a while) you can 
+activate the env with `conda activate chirpp`. I am also working on a setuy.py file for dependency installation but 
+that method does not cover non-python dependencies (like cuda libraries for the ai models) so that might never happen.
+
+In my mind `setup.py` only exists to make the package pip installable and callable from the command line like any 
+other package to facilitate automation. After the environment creation you can activate it with `conda activate 
+chirpp_cpu` after that if you would like you can install the chirpp_code package using `pip install .`. This will 
+install the chirpp_code package like any other pip package and the generate_report.py script should be available 
+from the command line anywhere. 
+
+Keep in mind that you will need to activate the conda enviroment first to be able to use the package. 
+
+## Known issues
+
+Currently the substance id code does not work. I will push a fix for it in the near future. Any additional and 
+tested autofill functions will be added slowly as well. 
+
+## Where are the epic files?
+
+They are in the same VM that we have used last summer. I have deleted your user accounts. I will try to create them 
+before I leavebut I will also share the location and the account that these files are uploaded to. I will try to 
+organize this as much as I can. I will also change the file permissions so you can have access, this also means that 
+you can delete/modify things please be careful and do not modify the raw data. Whenever you are working on a file 
+please make a copy and work on the copy, leave the original in the `/home/epic/chirpp` folder.
+
+The IP for the VM is `172.20.4.169`. You can access the vm using a simple ssh tunnel. 
 
 ## Hardware requirements
 
@@ -10,22 +54,6 @@ Whiel these script can potentially run on any cpu a gpu is highly reccomended, T
 pipeline was a RTX3080Ti laptop gpu with 16GB or Vram, that said it never came close to filling up the vram so 8GB 
 might be sufficient for inference. Running it without gpu will increase the runtime significantly but I have not tested
 by how much. 
-
-## Installation
-Conda or miniconda is strongly reccomended for setting up an enviroment for this pipeline as it manages to match 
-hardware and software requirements of the machine in use. After creating a conda enviroment with a python version of 
-your choosing (only tested on python 3.10 and 3.11. 3.12 might cause some dependency issues with pytorch not sure if 
-those have been resolved yet) you can install the requirements in the `requirement.txt` file.  
-
-## Dependencies 
-
-The dependencies are minimal in number but they are big dependencies like pytorch, and transformers. There are also 
-some models that needs to be downloaded. 2 of these models are custom fine tuned so contact me for accessing them, 
-the other ones are for zero-shot learning for inside/outside and whether something includes sports (not implemented 
-in autofill yet, see below). I use the same model with different prompts for those columns, for calculating cosine 
-similarities I use sentence transformes `all-mpnet-base-v2` model. This again needs to be download to a location that 
-is to be specified in the config file. Currently the cosine similarity is not used in the pipeline but it is there 
-for humans to asses the quality of the summarization models. 
 
 ## How the pipeline works
 
@@ -74,15 +102,41 @@ respective folders. I do not reccoment changing those parameters without good re
 error to bring the pipeline to this state, this is especially true for the context rules, there are sometimes 
 unintented consequences of changing things like direction or max scope. 
 
-## In the future
+### Adding new features
 
-There are many remaining columns that needs to be filled by humans, and these pose significant challenges to 
-automation mostly because of their implied or unceratin nature. Some of the requirements do not allow for ambiguite 
-while others provide too much of it. The main goal is to fill up as much of the form as possible both row and column 
-wise. 
+If you want to add new features to the pipeline do not add them to the pipeline branch. Please create a new branch 
+or overwrite and existing branch and make your changes. When you are done create a pull request and I will review 
+the code. Whenever possible please test your code. Currently we do not have an automated testing method and test 
+cases. We can use one of the daily notes for a simple test case and use something like `pytest`. If you do not have 
+an idea for a feature and would like to contribute please consider adding unit test. 
 
-There are also additional features that will eventually be implemented as a software platform. These will require 
-additional features to be included either in the report or the report generation will be offloaded to he platform 
-altogether. 
+For other methods please make your additions to the appropriate section of the pipeline (pre/post process or 
+inference). The additions to the main classes should be miminal. You can add functions to `utils.py` in each of the 
+step directories or create additional python modules to be called by the main class. Please the `master` branch for 
+instructions on how to use classes and general guidelines on the code.  
 
-Please let me know if you have any questions. 
+
+## TODO
+
+There are several features that are missing form this pipeline below is a short list of what I have in mind feel 
+free to expand the list as appropriate
+
++ Autofilling more columns 
++ Creating a database of all the processed and raw notes
++ Automating the pipeline runs with a cron job
++ Moving/deleting old files after they have been imported to database
++ An S3 or S3 like storage solution to download files after they have been processed
++ A search functionality to search for specific keywords and terms
++ A UI for interacting with the database. 
+
+## ROADMAP
+
+The most important goal right now is automating the pipeline and getting the results daily. The next step is 
+importing all the results to a database. For this I have PostgreSQL in mind for several reasons. It is quite feature 
+complete and has extensions that allow for full text search that rivals elasticsearch in speed w/o the memory 
+constraints. Setting up the database and the full text extension is another important one that I can use help with. 
+For more information on that please see [here](https://www.postgresql.org/docs/current/textsearch.html)
+
+After the database is setup the next phase will include adding logging to the database so we can keep track of what 
+has been searched and used. This will be essential in the fututre if we want to build a web UI for other to search 
+the database and maybe even do the coding on the database in real time.

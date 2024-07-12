@@ -98,7 +98,10 @@ class Preprocess:
         take only ED provider notes from the Note type column
         :return: self with raw section filled in
         """
-        notes = read_crystal_excel_file(path=self.note_file)
+        if self.note_file.endswith("xlsx"):
+            notes = read_crystal_excel_file(path=self.note_file)
+        elif self.note_file.endswith("txt"):
+            notes=process_epic_dump(self.note_file)
         self.raw_notes = notes
         return self
 

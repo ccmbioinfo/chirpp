@@ -4,11 +4,72 @@ import pandas as pd
 import spacy
 import Levenshtein as ls
 from math import ceil
+import string
+
 
 spacy.prefer_gpu()
 
+class NotEnoughItemsError(Exception):
+    pass
+
+printable = set(string.printable)
+
 class MultipleNamesError(Exception):
     pass
+
+def read_crystal_excel_file(path):
+    """
+    read crystal excel file
+    :param path: path of the excel file
+    :param additional_columns: what other columns to use other than CSN, MRN, Arrival date/time
+    note text and note type
+    :return: a pd.DataFrame of all the records of a specific visit
+    """
+    colnames = pd.read_excel(path, header=0, nrows=1)
+    if "MRN" in colnames:
+        df = pd.read_excel(path, header=0)
+    else:
+        df = pd.read_excel(path, header=0, skiprows=1)
+        if "MRN" not in df:
+            raise ValueError("MRN column not found")
+
+    return df
+
+
+def process_epic_dump(note_file, delim="|"):
+    """
+    This takes the epic dump and creteates a compatible pandas data frame
+    :param note_file: this the epic dump txt with | delim
+    :param delim: the delim for futureproofing
+    :return:
+    """
+    with open(note_file, "rb") as f:
+        contents = []
+        for line_num, line in enumerate(f):
+            line = line.decode("ascii", errors="ignore")
+            # line1=''.join(filter(lambda x: x in printable, line))
+            line = line.strip().split(delim)
+            if line_num == 0:
+                header = line
+            else:
+                if len(line) == len(header):
+                    contents.append(line)
+                if len(line) < len(header):
+                    raise NotEnoughItemsError(
+                        "there are {} items in line {} instead of {}".format(len(line), line_num, len(header)))
+                if len(line) > len(header):
+                    no_text = line[:len(header) - 1]
+                    text = line[(len(header) + 1 * -1):]
+                    text = " ".join(text)
+                    no_text.append(text)
+                    contents.append(no_text)
+
+    contents = pd.DataFrame(contents, columns=header)
+    contents["LOS"] = [item.total_seconds() / 3600 for item in \
+                       (pd.to_datetime(contents["Departure DateTime"]) - pd.to_datetime(
+                           contents["Arrival DateTime"])).to_list()]
+    contents["Arrival Time"] = pd.to_datetime(contents["Arrival DateTime"]).dt.time
+    return contents
 
 def split(ls, max_size, combine=True, join_w=" "):
     """
@@ -34,12 +95,12 @@ def split(ls, max_size, combine=True, join_w=" "):
 #TODO add replace str to params
 def deidentify(note_text, language_model, name, replace_str="pt"):
     """
-
-    :param df:
-    :param language_model:
-    :param name_col:
-    :param text_col:
-    :return:
+    whether to remove patient names from the text
+    :param df: dataframe for the notes
+    :param language_model: which model to use, defaults to spacy trf
+    :param name_col: name column, we need to see which ones are the patients which ones are not patient
+    :param text_col: processed text column, we will lool for names here
+    :return: returns the note text with the patient name (if present in the note) replaced with replace string, defaults to pt for patient
     """
     nlp=spacy.load(language_model)
 
@@ -86,25 +147,6 @@ def deidentify(note_text, language_model, name, replace_str="pt"):
 
         # note_df=note_df.drop(columns=["Patient Name", "CSN"])
         return note_text
-
-
-def read_crystal_excel_file(path):
-    """
-    read crystal excel file
-    :param path: path of the excel file
-    :param additional_columns: what other columns to use other than CSN, MRN, Arrival date/time
-    note text and note type
-    :return: a pd.DataFrame of all the records of a specific visit
-    """
-    colnames = pd.read_excel(path, header=0, nrows=1)
-    if "MRN" in colnames:
-        df = pd.read_excel(path, header=0)
-    else:
-        df = pd.read_excel(path, header=0, skiprows=1)
-        if "MRN" not in df:
-            raise ValueError("MRN column not found")
-
-    return df
 
 
 def remove_extra_spaces(text):

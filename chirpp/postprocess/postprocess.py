@@ -1,6 +1,4 @@
-import os
 
-import numpy as np
 import pandas as pd
 
 from .utils import *
@@ -14,7 +12,7 @@ class PostProcess:
         :param raw_notes: raw notes, this include everynote, this is basically the excel file
         :param inference_notes: this is the output of the intference section it includes a lot of stuff that will be used
         for autofill
-        :param params:
+        :param params: params from config.yaml
         """
         self.params = params
 
@@ -40,7 +38,7 @@ class PostProcess:
                 lambda x: x.strftime('%Y-%m-%d')).drop_duplicates()
             group_df["ER Date"] = pd.to_datetime(data["Arrival Date"]).dt.strftime('%Y-%m-%d').drop_duplicates()
             group_df["ER Time"] = data["Arrival Time"].apply(lambda x: x.strftime('%H:%M')).drop_duplicates()
-            group_df["CTAS"] = data["CTAS"].apply(lambda x: int(x) if not np.isnan(x) else "").drop_duplicates()
+            group_df["CTAS"] = data["CTAS"].apply(lambda x: int(x) if not pd.isna(x) else "").drop_duplicates()
             group_df["Chief Complaint"] = data["Chief Complaint"].drop_duplicates()
             group_df["W4P"] = 0  # this is hardcoded because it almost never happens
             group_df["Notes"] = get_report_note(data)
@@ -48,7 +46,7 @@ class PostProcess:
             group_df["Diagnosis"] = data["Diagnosis"].drop_duplicates()
             group_df["probs"] = data["probs"].drop_duplicates()
             group_df["Problem List"]=data["Problem List"].drop_duplicates()
-            group_df["cosine_similarity"]=data["cosine_similarity"].drop_duplicates()
+            group_df["to_summarize"]=data["to_summarize"].drop_duplicates()
             group_df["PHAC Narrative"] = data["PHAC Narrative"].drop_duplicates()
             group_df["I/O"] =data["io"].drop_duplicates()
             group_df["IN"]=data["intent"]
@@ -73,16 +71,18 @@ class PostProcess:
 
         self.template = template
 
-        self.sheet1 = self.template[(pd.isna(self.template["cosine_similarity"])) |
-                                    (~self.template["Chief Complaint"].isin(params["pos_complaints"])) ]
-        self.sheet2 = self.template[(~pd.isna(self.template["cosine_similarity"])) |
-                                    (self.template["Chief Complaint"].isin(params["pos_complaints"]))]
+        self.sheet1 = self.template[~self.template["to_summarize"]]
+        self.sheet2 = self.template[self.template["to_summarize"]]
 
     #TODO sd1-5, area, location, place, Inj date, Inj time, sports code
     def autofill(self):
+        """
+        autofills couple of columns using the functions from utils,
+        the current columns are NO1, BP1, disposotion and substance id
+        :return: returns self with the sheet2 filled in
+        """
         complaints = self.sheet2["Chief Complaint"].to_list()
         notes = self.sheet2["pre_processed"].to_list()
-        problems = self.sheet2["Problem List"].to_list()
         diags = self.sheet2["Diagnosis"]
         merged_notes = self.sheet2["Notes"].to_list()
         dispositions = self.sheet2["Disposition"].to_list()
@@ -94,8 +94,8 @@ class PostProcess:
             "BP1": [],
             "DISP": [],
         }
-        for complaint, note, merged, problem, diag, disp in zip(complaints, notes, merged_notes, problems, diags,
-                                                                dispositions):
+        for complaint, note, merged, diag, disp, has_sub in zip(complaints, notes, merged_notes, diags,
+                                                                dispositions, has_substance):
             diag = str(diag).lower()
             if complaint=="Medical Device Problem":
                 no1=99
@@ -120,12 +120,12 @@ class PostProcess:
         write the report to file
         :param path: path for the file
         :param overwrite: whether to write the file if it exisist
-        :return: nothing
+        :return: nothing, saves an excel file with 2 sheets
         """
         if os.path.exists(path) and not overwrite:
             raise FileExistsError("{} already exisits".format(path))
 
-        self.sheet2=self.sheet2.drop(columns=["pre_processed", "Disposition"])
+        self.sheet2=self.sheet2.drop(columns=["pre_processed", "Disposition", "to_summarize"])
         self.sheet2["sd1"]=-1
         self.sheet2["SPORTS CODE"]=4
         self.sheet2[(self.sheet2["NO1"]==12) & (self.sheet2["BP1"]==110)]["NO2"]=42

@@ -12,7 +12,6 @@ class Inference:
     This will perform the inference for classification and summarization
     """
 
-#TODO add cosinde distance model
     def __init__(self, classification_model, summarization_model, classification_labels,
                  intent_model, intent_labels, substance_model, substance_labels, io_model, io_labels,
                  device=None):
@@ -67,11 +66,11 @@ class Inference:
 
     def classify(self, notes, note_col="Note Text", include_labels=False):
         """
-
-        :param notes:
-        :param note_col:
-        :param include_labels:
-        :return:
+        :param notes: pre processed notes as a pd dataframe
+        :param note_col: the column that contains the preprocessed notes
+        :param include_labels: whether to inlcude the prediction labels, if false only the probability of being a chirpp
+        is returned
+        :return: model probabilities of being a chirpp case
         """
 
         if self.clf is None:
@@ -104,6 +103,14 @@ class Inference:
             return report_probs
 
     def summarize(self, notes, note_col="Note Text", truncation=True, max_length=128):
+        """
+        run summarization using the specified moden in __init
+        :param notes: notes, dataframe
+        :param note_col: a column within the dataframe to summarize ideally this is the pre-processed notes
+        :param truncation: whether to trunctate the texts if its longer than the model max
+        :param max_length: model max length
+        :return: summaries in a list
+        """
         if self.summarizer is None:
             raise NoModelError("No model has been specified for summarization")
 
@@ -135,6 +142,14 @@ class Inference:
         return distances
 
     def get_intent(self, notes, notes_col, label_dict, cutoff=0.8):
+        """
+        run intent classification with the specified model in __init__
+        :param notes: dataframe with the notes
+        :param notes_col: column where the notes are ideally these are pre-processed
+        :param label_dict: label dict to look up chirpp codes to translate from torch labels
+        :param cutoff: the model confidence cutoff, anything below that will be left blank
+        :return: labels for intent in a list
+        """
         to_infer=notes[notes_col].to_list()
         labels = self.intent_clf(to_infer, padding=True, truncation=True)
 
@@ -160,6 +175,13 @@ class Inference:
 
 
     def get_substance(self, notes, notes_col, cutoff=0.9):
+        """
+        determine whether substances are mentioned
+        :param notes: same as abvoe
+        :param notes_col: same as above
+        :param cutoff: same as above
+        :return: a list of labels
+        """
         to_infer = notes[notes_col].to_list()
         labels = self.substance_clf(to_infer, padding=True, truncation=True)
 
@@ -184,6 +206,13 @@ class Inference:
         return results
 
     def get_io(self, notes, notes_col, cutoff=0.9):
+        """
+        determine whether the incident happened inside or outside
+        :param notes: same as above
+        :param notes_col: same as above
+        :param cutoff: same as above
+        :return: labels in a list
+        """
         to_infer = notes[notes_col].to_list()
         labels = self.io_clf(to_infer, padding=True, truncation=True)
 

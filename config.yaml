@@ -1,11 +1,9 @@
 
-#TODO add read args to notes
-
-device: "cuda:0"
 
 ##### PRE PROCESS
 pre_process:
-
+  #TODO this needs to be implemented as a param
+  epic_dump_delim: "|"
   inference_sections: ["history_of_present_illness", "observation_and_plan", "chief_complaint", "problem_list", "diagnosis"]
   autofill_sections: ["history_of_present_illness", "chief_complaint", "problem_list", "diagnosis"]
 
@@ -15,15 +13,14 @@ pre_process:
   "physical_exam", "other", "user_index"]
   
   line_col: "LINE"
-  section_rules: "preprocess/preprocess_patterns.json"
-  lang_model: "models/spacy"
+  section_rules: "chirpp/preprocess/preprocess_patterns.json"
   note_types:
     Note Type: ["ED Provider Notes", "ED Triage Notes"]
   include_cols: ["Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "LOS"]
   group_cols: ["MRN", "Arrival Date"]
   orientation: "front"
-  keep_unlabelled: True
-  anonymize: False
+  keep_unlabelled: true
+  anonymize: true
 
   terms_to_fix:  {'hx': 'history of', '#': 'fracture', 'c/o': 'complaining of', 'f/u': 'follow up',
   'fu': 'follow up', 'w': 'with', 'ortho': 'orthopaedics', 'psych': 'psychiatry', 'cardio': 'cardiology',
@@ -56,16 +53,16 @@ inference:
   include_labels: false
   max_length: 128
   truncation: true
-  cutoff: 0.90
+  cutoff: 0.95
 
 ## normally there are 8 claasses but partner abuse is non-existent
-
-  classification_model: "models/distilbert"
-  summarization_model: "models/t5-small"
-  distance_model: "models/all-mpnet-base-v2"
-  io_model: "models/distilbert_io"
-  intent_model: "models/albert_xxl_intent"
-  substance_model: "models/albert_xxl_sub"
+#TODO need to add spacy model here and refactor to make it a param
+  classification_model: "chirpp/models/distilbert"
+  summarization_model: "chirpp/models/t5-small"
+  distance_model: "chirpp/models/all-mpnet-base-v2"
+  io_model: "chirpp/models/distilbert_io"
+  intent_model: "chirpp/models/albert_xxl_intent"
+  substance_model: "chirpp/models/albert_xxl_sub"
   
   intent_labels: 7 
   io_labels: 2
@@ -80,7 +77,7 @@ inference:
   note_col: "Note Text"
   use_chirpp: true
   chirpp_col: "CHIRPP Icon"
-  anonymize_summaries: true
+  anonymize_summaries: false
 
 
   pos_complaints: [ "Oral / Esophageal Foreign Body", "Upper Extremity Injury", "Lower Extremity Injury",
@@ -120,9 +117,9 @@ post_process:
 
 
   report_header: ["MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "INJ DATE", "Hr", "Min", "AM/PM",
-  "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "W4P", "NO1", "BP1", "NO2", 'veh', 'veh p',
-  "BP2", "NO3", "BP3", "Notes", 'LOS', "DISP", "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
-  "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition", "cosine_similarity"]
+  "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "W4P", "NO1", "BP1", "NO2", 
+  "BP2", "NO3", "BP3", 'veh', 'veh p',"Notes", 'LOS', "DISP", "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
+  "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition", "to_summarize"]
 
   note_types: ['ED Triage Notes', 'ED Provider Notes', 'PS Initial Consult', 'Consults', 
               'Consult Follow Up', 'Admission', 'Discharge Summary', 'Progress Notes', 
