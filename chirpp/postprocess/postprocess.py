@@ -1,6 +1,3 @@
-
-import pandas as pd
-
 from .utils import *
 
 
@@ -9,7 +6,7 @@ class PostProcess:
         """
         create a report template to be autofilled this contains all the cases and all the columns that needs to be
         filled, this template will then be split into 2 sheets to be saved as an excel file
-        :param raw_notes: raw notes, this include everynote, this is basically the excel file
+        :param raw_notes: raw notes, this includes everynote, this is basically the excel file
         :param inference_notes: this is the output of the intference section it includes a lot of stuff that will be used
         for autofill
         :param params: params from config.yaml
@@ -22,7 +19,7 @@ class PostProcess:
         inference_notes = inference_notes[['MRN', 'Arrival Date', 'probs', 'to_summarize', 'PHAC Narrative',
                                            'cosine_similarity', 'pre_processed', 'io', 'intent', 'sub']]
         merged = raw_notes.merge(inference_notes, how="inner", on=["MRN", "Arrival Date"])
-        merged["Arrival Time"]=pd.to_datetime(merged["Arrival Time"].astype(str))
+        merged["Arrival Time"] = pd.to_datetime(merged["Arrival Time"].astype(str))
         merged = merged.groupby(["CSN", "MRN", "Arrival Date", "Arrival Time"])
 
         report_df = pd.DataFrame(columns=self.params["report_header"])
@@ -38,33 +35,32 @@ class PostProcess:
                 lambda x: x.strftime('%Y-%m-%d')).drop_duplicates()
             group_df["ER Date"] = pd.to_datetime(data["Arrival Date"]).dt.strftime('%Y-%m-%d').drop_duplicates()
             group_df["ER Time"] = data["Arrival Time"].apply(lambda x: x.strftime('%H:%M')).drop_duplicates()
-            group_df["CTAS"] = data["CTAS"].apply(lambda x: int(x) if not pd.isna(x) else "").drop_duplicates()
+            group_df["CTAS"] = data["CTAS"].apply(process_ctas).drop_duplicates()
             group_df["Chief Complaint"] = data["Chief Complaint"].drop_duplicates()
             group_df["W4P"] = 0  # this is hardcoded because it almost never happens
             group_df["Notes"] = get_report_note(data)
             group_df["LOS"] = data["LOS"].drop_duplicates()
             group_df["Diagnosis"] = data["Diagnosis"].drop_duplicates()
             group_df["probs"] = data["probs"].drop_duplicates()
-            group_df["Problem List"]=data["Problem List"].drop_duplicates()
-            group_df["to_summarize"]=data["to_summarize"].drop_duplicates()
+            group_df["Problem List"] = data["Problem List"].drop_duplicates()
+            group_df["to_summarize"] = data["to_summarize"].drop_duplicates()
             group_df["PHAC Narrative"] = data["PHAC Narrative"].drop_duplicates()
-            group_df["I/O"] =data["io"].drop_duplicates()
-            group_df["IN"]=data["intent"]
-            group_df["sub"]=data["sub"]
+            group_df["I/O"] = data["io"].drop_duplicates()
+            group_df["IN"] = data["intent"]
+            group_df["sub"] = data["sub"]
 
-            
-            for_narrative=data[data["Note Type"].isin(self.params["note_types"])]
-            for_narrative["Note Type"]=pd.Categorical(for_narrative["Note Type"], 
-                                                     categories=self.params["note_types"])
-            for_narrative=for_narrative.sort_values(by = "Note Type")
-            narrative=[]
-            for note_type, note_text in zip(for_narrative["Note Type"].tolist(), for_narrative["Note Text"].tolist()):               
+            for_narrative = data[data["Note Type"].isin(self.params["note_types"])]
+            for_narrative["Note Type"] = pd.Categorical(for_narrative["Note Type"],
+                                                        categories=self.params["note_types"])
+            for_narrative = for_narrative.sort_values(by="Note Type")
+            narrative = []
+            for note_type, note_text in zip(for_narrative["Note Type"].tolist(), for_narrative["Note Text"].tolist()):
                 if not pd.isna(note_text):
                     narrative.append(str(note_type) + "\n\n" + str(note_text))
             narrative = "\n\n".join(narrative)
             group_df["SK Narrative"] = narrative
-            group_df["Disposition"]=data['Disposition'].drop_duplicates().astype(str)
-            group_df["pre_processed"]=data["pre_processed"].drop_duplicates().astype(str)
+            group_df["Disposition"] = data['Disposition'].drop_duplicates().astype(str)
+            group_df["pre_processed"] = data["pre_processed"].drop_duplicates().astype(str)
             group_df.fillna('')
             template.append(group_df)
         template = pd.concat(template)
@@ -74,7 +70,7 @@ class PostProcess:
         self.sheet1 = self.template[~self.template["to_summarize"]]
         self.sheet2 = self.template[self.template["to_summarize"]]
 
-    #TODO sd1-5, area, location, place, Inj date, Inj time, sports code
+    # TODO sd1-5, area, location, place, Inj date, Inj time, sports code
     def autofill(self):
         """
         autofills couple of columns using the functions from utils,
@@ -86,7 +82,7 @@ class PostProcess:
         diags = self.sheet2["Diagnosis"]
         merged_notes = self.sheet2["Notes"].to_list()
         dispositions = self.sheet2["Disposition"].to_list()
-        has_substance=self.sheet2["sub"].to_list()
+        has_substance = self.sheet2["sub"].to_list()
 
         autofill_cols = {
             "subID": [],
@@ -97,13 +93,13 @@ class PostProcess:
         for complaint, note, merged, diag, disp, has_sub in zip(complaints, notes, merged_notes, diags,
                                                                 dispositions, has_substance):
             diag = str(diag).lower()
-            if complaint=="Medical Device Problem":
-                no1=99
-                bp1=999
+            if complaint == "Medical Device Problem":
+                no1 = 99
+                bp1 = 999
             else:
                 no1, bp1 = injuries(diag)
             report_disposition = get_disposition(merged, disp, no1, bp1)
-            subid=get_substances(note, has_substance)
+            subid = get_substances(note, has_substance)
 
             autofill_cols["NO1"].append(no1)
             autofill_cols["BP1"].append(bp1)
@@ -125,10 +121,10 @@ class PostProcess:
         if os.path.exists(path) and not overwrite:
             raise FileExistsError("{} already exisits".format(path))
 
-        self.sheet2=self.sheet2.drop(columns=["pre_processed", "Disposition", "to_summarize"])
-        self.sheet2["sd1"]=-1
-        self.sheet2["SPORTS CODE"]=4
-        self.sheet2[(self.sheet2["NO1"]==12) & (self.sheet2["BP1"]==110)]["NO2"]=42
+        self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "to_summarize"])
+        self.sheet2["sd1"] = -1
+        self.sheet2["SPORTS CODE"] = 4
+        self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["NO2"] = 42
         self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["BP2"] = 135
 
         with pd.ExcelWriter(path) as out:

@@ -3,6 +3,7 @@ import subprocess
 import sys
 
 import medspacy
+import pandas as pd
 import spacy
 from medspacy.context import ConText
 
@@ -11,7 +12,6 @@ from chirpp.postprocess.target_rules import *
 
 if not spacy.util.is_package("en_core_web_trf"):
     subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_trf"])
-
 
 parse_nlp = spacy.load('en_core_web_trf', disable=["ner"])
 med_nlp = medspacy.load(medspacy_enable=['medspacy_sectionizer'])
@@ -24,6 +24,21 @@ target.add(substances)
 
 class MissingDataError(Exception):
     pass
+
+
+def process_ctas(CTAS):
+    """
+    process ctas from epic dumps
+    :param CTAS: ctas
+    :return: returns ctas that's processed
+    """
+    processed_ctas = ""
+    if pd.isna(CTAS) or CTAS == "":
+        processed_ctas = ""
+    else:
+        processed_ctas = int(CTAS)
+
+    return processed_ctas
 
 
 def process_sex(sex):
@@ -95,7 +110,8 @@ def get_report_note(df):
     else:
         return ""
 
-#TODO this needs to be majorly refactored or all these need to be represented somewhere else where it's more readable
+
+# TODO this needs to be majorly refactored or all these need to be represented somewhere else where it's more readable
 def body_parts(dx):
     """
     take diagnosis and extract body parts
@@ -201,7 +217,8 @@ def body_parts(dx):
     if ("foreign" in dx or "fb" in dx) and noBP != True:
         return False
 
-#TODO same as body parts
+
+# TODO same as body parts
 def injuries(dx):
     """
     extract injury type from the diagnosis, then the body part depending will come from the body_parts function
