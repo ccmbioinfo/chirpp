@@ -6,3 +6,5 @@ pandas
 Levenshtein
 numpy
 sentence-transformers
+sqlalchemy
+dotenv

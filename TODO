@@ -1,0 +1,10 @@
+1. Need to generate and .env file for db connections
+2. Need to include generated columns like age
+3. Need to add full text search to Note, PHAC Summary and SK Narrative columns
+4. Need to create scripts that generate reports given a time interval based on arrival date
+5. Need import scripts for new cases for raw notes
+6. Need import scripts for fully processed cases
+
+7. Need ui for uploading human processed cases
+8. Need ui for downloading script processed cases
+9. Need ui for annotating

@@ -1,4 +1,4 @@
-
+#TODO need to add database params as an .env file for safety
 
 ##### PRE PROCESS
 pre_process:

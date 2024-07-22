@@ -15,6 +15,7 @@ from chirpp.postprocess.postprocess import PostProcess
 from chirpp.preprocess.preprocess import SectionRemover, Preprocess
 from chirpp.preprocess.utils import deidentify
 
+#TODO this will need to migrate to the db
 parser = arg.ArgumentParser(description='Preprocess notes file for inference')
 parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
 parser.add_argument('-o', '--outname', type=str, help='Path to outputs')

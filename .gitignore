@@ -10,3 +10,4 @@ old
 daily
 to_run
 chirpp/models
+.env
