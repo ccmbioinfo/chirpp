@@ -1,6 +1,5 @@
 #! /bin/bash
 
-set -oe pipefail
 
 cd /home/epic/chirpp/chirpp
 
