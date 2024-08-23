@@ -1,5 +1,5 @@
 type Dictionary = { [key: string]: string };
- 
+
 const dictionary: Dictionary = {
   'hx': 'history',
   '#': 'fracture',
@@ -19,7 +19,7 @@ const dictionary: Dictionary = {
   'heme': 'hematology',
   'rx': 'prescription',
   'tx': 'treatment',
-  'd': 'days',
+  'd': 'days ago',
   'mo': 'months',
   'lac': 'laceration',
   '@': 'at',
@@ -88,9 +88,18 @@ const dictionary: Dictionary = {
   'NBNB': 'non-bloody, non-bilious',
   'dw': 'discussed with',
   'RUQ': 'right upper quadrant',
-  'abdo': 'abdomen'
+  'abdo': 'abdomen',
+  'CVH': 'Credit Valley Hospital',
+  'RVH': 'Royal Victoria Hospital',
+  'NYGH': 'North York General Hospital',
+  'MSH': 'Markham Stouffville Hospital',
+  'd/t': 'due to',
+  'h/o': 'history of',
+  'ER': 'emergency room',
+  'XR': 'x-ray',
+  'MD': 'medical doctor'
 };
- 
+
 const lowercaseDict: Dictionary = Object.fromEntries(Object.entries(dictionary).map(([key, value]) => [key.toLowerCase(), value]));
 const sortedDict: Dictionary = Object.keys(lowercaseDict).sort().reduce((acc, key) => {
   acc[key] = lowercaseDict[key];
@@ -100,25 +109,25 @@ const reversedDict: Dictionary = Object.keys(sortedDict).reverse().reduce((acc, 
   acc[key] = sortedDict[key];
   return acc;
 }, {} as Dictionary);
- 
+
 const termsToReplace: string[] = Object.keys(reversedDict);
 const replacements: string[] = Object.values(reversedDict);
- 
+
 const termMapping: Dictionary = Object.fromEntries(termsToReplace.map((key, index) => [key.toLowerCase(), replacements[index]]));
- 
+
 const patterns: string[] = termsToReplace.map(term => `(?<![a-zA-Z0-9])${term}(?![a-zA-Z0-9])`);
 const pattern: RegExp = new RegExp(patterns.join('|'), 'gi');
- 
+
 const removeExtraSpaces = (text: string): string => {
   const words = text.split(/\s+/);
   return words.join(' ');
 };
- 
+
 const capitalizeSentences = (text: string): string => {
   const sentences = text.split('. ');
   return sentences.map(sentence => sentence.charAt(0).toUpperCase() + sentence.slice(1)).join('. ');
 };
- 
+
 const pushPunctuations = (text: string): string => {
   const punctuations = [".", ",", ";", ":", "/", "?", "!", "\\"];
   let counter = 0;
@@ -133,18 +142,18 @@ const pushPunctuations = (text: string): string => {
   }
   return text;
 };
- 
+
 const replaceTerms = (match: string): string => {
   const term = match.toLowerCase();
   const replacement = termMapping[term];
   return replacement || match;
 };
- 
+
 const modifyText = (text: string): string => {
   const modifiedText = text.replace(new RegExp(`(?<=\\d)(?=${termsToReplace.join('|')})`, 'gi'), ' ');
   return modifiedText.replace(pattern, replaceTerms);
 };
- 
+
 const final = (text: string): string => {
   let newText = capitalizeSentences(removeExtraSpaces(text));
   if (!newText.endsWith('.')) {
@@ -152,8 +161,8 @@ const final = (text: string): string => {
   }
   return newText;
 };
- 
- 
+
+
 const summaryCleanup = (text: string): string => {
   if (!text) {
     return '';
@@ -165,23 +174,23 @@ const summaryCleanup = (text: string): string => {
     return final(replacedText);
   }
 };
- 
- 
+
+
 function processColumn(sheet: ExcelScript.Worksheet, columnIndex: number): void {
   const range = sheet.getUsedRange();
   const rowCount = range.getRowCount();
- 
+
   for (let i = 1; i < rowCount; i++) {
     const cell = range.getCell(i, columnIndex);
     const cellValue = cell.getValue() as string;
- 
+
     if (cellValue) {
       const cleanedText = summaryCleanup(cellValue);
       cell.setValue(cleanedText);
     }
   }
 }
- 
+
 function main(workbook: ExcelScript.Workbook) {
   const sheet = workbook.getActiveWorksheet();
   const columnIndex = 19; // Replace with the index of the column you want to process
