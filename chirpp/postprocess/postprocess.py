@@ -126,6 +126,7 @@ class PostProcess:
         self.sheet2["SPORTS CODE"] = 4
         self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["NO2"] = 42
         self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["BP2"] = 135
+        self.sheet2=touchups(self.sheet2)
 
         with pd.ExcelWriter(path) as out:
             self.sheet1.to_excel(out, sheet_name="Sheet 1", index=False)

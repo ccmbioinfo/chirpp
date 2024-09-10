@@ -296,6 +296,9 @@ def injuries(dx):
             "conjunctival" in dx and ("haemorrhage" in dx or "hemorrhage" in dx)):
         no = 24
         bp = 135
+    elif ("minor" in dx and "head" in dx) or ("head" in dx and "injury" in dx) or ("head" in dx and "trauma" in dx):
+        no = 41
+        bp = 135
     elif (("dental" in dx or "tooth" in dx or "teeth" in dx) and (
             "injury" in dx or "fracture" in dx or "trauma" in dx or "chip" in dx or "pain" in dx or "implant" in dx or "device" in dx or "avulsion" in dx or "impact" in dx)):
         no = 25
@@ -341,9 +344,7 @@ def injuries(dx):
             "soft" in dx or "earlobe" in dx or "skin" in dx or (body_parts(dx) != False)) or ("splinter" in dx):
         no = 37
         bp = body_parts(dx)
-    elif ("minor" in dx and "head" in dx) or ("head" in dx and "injury" in dx) or ("head" in dx and "trauma" in dx):
-        no = 41
-        bp = 135
+
     elif "concussion" in dx:
         no = 42
         bp = 135
@@ -448,3 +449,20 @@ def get_disposition(merged_notes, disposition, no1, bp1):
         disp_code = None
 
     return disp_code
+
+#TODO
+def touchups(data):
+    """
+    these are some edge cases that we noticed while processing the notes, hopefully in the future these will be removed
+    :param data: a dataframe namely sheet2
+    :return: the same dataframe where some of the hardcoded values below changed
+    """
+    # bathroom, washroom, laminate floors, laminate indoors
+    data["AREA"][data["PHAC Narrative"].str.contains("monkey bar")]=59
+    data["I/O"][data["PHAC Narrative"].str.contains("laminate floor")] = 1
+    data["I/O"][data["PHAC Narrative"].str.contains("snow")] = 2
+    data["I/O"][data["PHAC Narrative"].str.contains("washroom")]=1
+    data["I/O"][data["PHAC Narrative"].str.contains("bathroom")] = 1
+    data["DISP"][data["Diagnosis"].str.lower() == "pulled elbow"] = 3
+
+

@@ -40,10 +40,10 @@ pre_process:
   'NAFLD': 'Non-alcoholic Fatty Liver Disease', 'foosh': 'fall on an outstretched hand', 'TMJ': 'Temporomandibular Joint',
   'MCP': 'metacarpophalangeal', 'OD': 'overdose', 'GnRH': 'Gonadotropin-Releasing Hormone', 'trans': 'transgender',
   'WIC': 'walk-in clinic', 'si': 'suicidal ideations', 'LOC': 'altered level of consciousness', 'CT': 'Computed Tomography',
-  'TTC': 'Toronto Transit Commission', 'FMD': 'family medical doctor', 'PCP': 'primary care provider',
+  'TTC': 'Toronto Transit Commission', 'FMD': 'family medical doctor', 'PCP': 'primary care provider', 'SI': 'suicidal ideation',
   'PMD': 'doctor of primary medicine', 'MVC': 'motor vehicle collision', 'EMS': 'Emergency Medical Services',
-  'EKG': 'electrocardiogram', 'ECG': 'electrocardiogram', 'NBNB': 'non-bloody, non-bilious',
-  'dw': 'discussed with', 'RUQ': 'right upper quadrant', 'yo': 'year old', 'co': 'complaining of', 'bl': 'bilateral'}
+  'EKG': 'electrocardiogram', 'ECG': 'electrocardiogram', 'NBNB': 'non-bloody, non-bilious', 'SH': 'self harm', 'MH': 'mental healh',
+  'dw': 'discussed with', 'RUQ': 'right upper quadrant', 'yo': 'year old', 'c/o': 'complaining of', 'b/l': 'bilateral',}
 
 
 

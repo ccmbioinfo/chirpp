@@ -22,3 +22,4 @@ class DbImport:
         pass
 
     def db_import(self):
+        pass
