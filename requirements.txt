@@ -6,5 +6,6 @@ pandas
 Levenshtein
 numpy
 sentence-transformers
-sqlalchemy
-dotenv
+sqlalchemy==1.4
+python-dotenv
+psycopg2
