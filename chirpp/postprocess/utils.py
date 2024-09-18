@@ -464,5 +464,6 @@ def touchups(data):
     data["I/O"][data["PHAC Narrative"].str.contains("washroom")]=1
     data["I/O"][data["PHAC Narrative"].str.contains("bathroom")] = 1
     data["DISP"][data["Diagnosis"].str.lower() == "pulled elbow"] = 3
+    return data
 
 
