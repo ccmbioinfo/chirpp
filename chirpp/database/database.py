@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from chirpp.database import utils
 from chirpp.database.query_builder import QueryBuilder
 
-
+#TODO this needs to move to postprocessing
 class Event:
     """
     This is the event code class, it will have context awere search and full text search
@@ -84,6 +84,12 @@ class DataBase:
                               "Notes": "notes", "subID": "sub_id", "SPORTS CODE": "sports_code", "DISP": "disp",
                               "IN": "intent",
                               'veh p': 'veh_p'}
+
+        # this is for getting the notes from the database and converting back to the original
+        col_dict_inverted={}
+        for key, value in self.col_dict.items():
+            col_dict_inverted[value]=key
+        self.col_dict_inverted=col_dict_inverted
 
     def process_dump(self, preprocess):
         """
@@ -169,6 +175,8 @@ class DataBase:
                        "arrival_time", "los", "chief_complaint", "problem_list", "diagnosis",
                        "ctas", "referrals", "note_type", "author_type", "author_service",
                        "note_text"]]
+
+        visits=visits.rename(columns=self.col_dict_inverted)
         return visits
 
     def get_report(self, start, end):
