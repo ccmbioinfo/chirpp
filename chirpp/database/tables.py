@@ -40,6 +40,9 @@ class Visits(Base):
     los = Column(Float)
     #human reviews are in the visits sections because we need review for both + and - cases
     processed = Column(Boolean)
+    address=Column(String)
+    city = Column(String)
+    province = Column(String)
 
 
 class Referrals(Base):
@@ -139,6 +142,7 @@ class CustomLabels(Base):
     key_words = Column(String)  # this might be more than just comma seprarted key words
     context_aware = Column(Boolean)  # this will generate new section rules on the fly and search
     context_rules = Column(JSON)  # this will need a schema verification system
+    active = Column(Boolean)
 
 
 # these are the visits that correspond to different custom labels
