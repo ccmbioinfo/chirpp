@@ -1,12 +1,16 @@
 #! python
+
 import argparse as arg
 import os
 from datetime import datetime
 
 import pandas as pd
 import yaml
+from dotenv import load_dotenv
 from torch.cuda import is_available
 from transformers import logging as hf_logging
+import dotenv
+from sqlalchemy import create_engine
 
 hf_logging.set_verbosity_error()
 
@@ -14,6 +18,7 @@ from chirpp.inference.inference import Inference
 from chirpp.postprocess.postprocess import PostProcess
 from chirpp.preprocess.preprocess import SectionRemover, Preprocess
 from chirpp.preprocess.utils import deidentify
+from chirpp.database.database import DataBase
 
 #TODO this will need to migrate to the db
 parser = arg.ArgumentParser(description='Preprocess notes file for inference')
@@ -21,9 +26,17 @@ parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
 parser.add_argument('-o', '--outname', type=str, help='Path to outputs')
 parser.add_argument('-c', '--config', type=str, help='config file in yaml format', default="config.yaml",
                     action="store")
+parser.add_argument('-d', '--to_database', type=bool, help='Import notes to database')
+parser.add_argument('-e', '--to_excel', type=bool, help='create an excel report')
+
+
 
 args = parser.parse_args()
 
+if not args.to_database or not args.to_excel:
+    raise ValueError("Neither report or database is specified, there is no where to save the report")
+
+load_dotenv()
 with open(args.config) as f:
     params = yaml.safe_load(f)
 
@@ -51,27 +64,32 @@ section_remover_for_inference = SectionRemover(lang_model="en_core_web_trf",
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Preprocessing")
 
-preprocessed_notes = Preprocess(args.notes, params["pre_process"]["terms_to_fix"])
+preprocess = Preprocess(args.notes, params["pre_process"]["terms_to_fix"])
 
-preprocessed_notes = preprocessed_notes.read_raw_notes()
+preprocess = preprocess.read_raw_notes()
+preprocess = preprocess.merge_lines(line_col=params["pre_process"]["line_col"],
+                                                    group_col=params["pre_process"]["group_cols"],
+                                                    text_col=params["pre_process"]["text_col"],
+                                                    )
+
 
 additional_columns = params["pre_process"]["include_cols"] + [params["pre_process"]["line_col"]]
 
-preprocessed_notes = preprocessed_notes.get_relevant_notes(filters=params["pre_process"]["note_types"],
+preprocess = preprocess.get_relevant_notes(filters=params["pre_process"]["note_types"],
                                                            additional_columns=additional_columns)
 include_cols = params["pre_process"]["include_cols"]
 include_cols.append(params["pre_process"]["line_col"])
-preprocessed_notes = preprocessed_notes.merge_notes(section_remover=section_remover_for_inference,
+
+preprocess = preprocess.process_notes(section_remover=section_remover_for_inference,
                                                     include_cols=include_cols,
                                                     group_cols=params["pre_process"]["group_cols"],
                                                     orientation=params["pre_process"]["orientation"],
                                                     keep_unlabelled=params["pre_process"]["keep_unlabelled"],
                                                     anonymize=params["pre_process"]["anonymize"],
-                                                    language_model="en_core_web_trf",
-                                                    line_col=params["pre_process"]["line_col"])
+                                                    language_model="en_core_web_trf")
 
 # TODO there probably is a better way than to create a copy
-inference_notes = preprocessed_notes.merged_raw.copy()
+inference_notes = preprocess.merged_raw.copy()
 
 inference_notes = inference_notes[~pd.isnull(inference_notes[params["inference"]["note_col"]])].copy()
 
@@ -181,8 +199,25 @@ inference_notes["io"][(inference_notes["to_summarize"]) & (inference_notes["inte
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Report")
 
 params["post_process"]["pos_complaints"] = params["inference"]["pos_complaints"]
-postprocess = PostProcess(preprocessed_notes.raw_notes, inference_notes, params["post_process"])
+postprocess = PostProcess(preprocess.raw_notes, inference_notes, params["post_process"])
 postprocess = postprocess.autofill()
-postprocess.create_report(args.outname)
+postprocess=postprocess.touchups()
+
+
+if args.to_database:
+    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Moving things to the database")
+
+    engine = create_engine('postgresql+psycopg2://{}:{}@{}:{}/{}'. \
+                           format(os.getenv("DB_USER"), os.getenv("DB_PWD"), os.getenv("DB_HOST"), os.getenv("DB_HOST"),
+                                  os.getenv("DB_PORT"), os.getenv("DB_NAME")))
+
+    database=DataBase(engine)
+    database.process_dump(preprocess)
+    database.process_report(postprocess)
+
+if args.to_excel:
+    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Creating Excel Report")
+    postprocess.create_report(args.outname)
+
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Done!")

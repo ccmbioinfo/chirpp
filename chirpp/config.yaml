@@ -13,6 +13,7 @@ pre_process:
   "physical_exam", "other", "user_index"]
   
   line_col: "LINE"
+  text_col: "Note Text"
   section_rules: "chirpp/preprocess/preprocess_patterns.json"
   note_types:
     Note Type: ["ED Provider Notes", "ED Triage Notes"]
@@ -126,6 +127,8 @@ post_process:
               'Assessment & Plan Note',  'ED Trauma Note', 'ED Trauma Notes',
               'ED Procedure Note', 'Procedures','Op Note', 'Transfer In / Advice Note']
               
+
+
 
 
 

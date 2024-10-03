@@ -16,8 +16,8 @@ class PostProcess:
         raw_notes["Arrival Date"] = pd.to_datetime(raw_notes["Arrival Date"])
         inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"])
         inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
-        inference_notes = inference_notes[['MRN', 'Arrival Date', 'probs', 'to_summarize', 'PHAC Narrative',
-                                           'cosine_similarity', 'pre_processed', 'io', 'intent', 'sub']]
+        inference_notes = inference_notes[["CSN", 'MRN', 'Arrival Date', 'probs', 'to_summarize', 'PHAC Narrative',
+                                           'pre_processed', 'io', 'intent', 'sub']]
         merged = raw_notes.merge(inference_notes, how="inner", on=["MRN", "Arrival Date"])
         merged["Arrival Time"] = pd.to_datetime(merged["Arrival Time"].astype(str))
         merged = merged.groupby(["CSN", "MRN", "Arrival Date", "Arrival Time"])
@@ -30,6 +30,7 @@ class PostProcess:
             group_df["POSTAL"] = data["Postal Code"].apply(process_postal).drop_duplicates()
             group_df["SEX"] = data["Sex"].apply(process_sex).drop_duplicates()
             group_df["MRN"] = data["MRN"].drop_duplicates()
+            group_df["CSN"] = data["CSN"].drop_duplicates()
             group_df["ScrMRN"] = data["MRN"].apply(scramble_mrn).drop_duplicates()
             group_df["DOB"] = pd.to_datetime(data["Date of Birth"]).apply(
                 lambda x: x.strftime('%Y-%m-%d')).drop_duplicates()
@@ -111,22 +112,30 @@ class PostProcess:
 
         return self
 
-    def create_report(self, path, overwrite=False):
+    # touchups and writign to file are being separated because normally we will be pushing all this stuff to the
+    # database and once in a blue moon we will get a report back
+    def touchups(self):
         """
-        write the report to file
-        :param path: path for the file
-        :param overwrite: whether to write the file if it exisist
-        :return: nothing, saves an excel file with 2 sheets
+        some manual tweakign of the columns based on feedback hopefully will not be needed soon
+        :return:
         """
-        if os.path.exists(path) and not overwrite:
-            raise FileExistsError("{} already exisits".format(path))
-
         self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "to_summarize"])
         self.sheet2["sd1"] = -1
         self.sheet2["SPORTS CODE"] = 4
         self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["NO2"] = 42
         self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["BP2"] = 135
-        self.sheet2=touchups(self.sheet2)
+        return self
+
+    def create_report(self, path, overwrite=False):
+        """
+        write report to excel
+        :param path: path of the file
+        :param overwrite: whether to replace the file or noe
+        :return: None, unless there is an error raised by pandas
+        """
+        if os.path.exists(path) and not overwrite:
+            raise FileExistsError("{} already exisits".format(path))
+
 
         with pd.ExcelWriter(path) as out:
             self.sheet1.to_excel(out, sheet_name="Sheet 1", index=False)
