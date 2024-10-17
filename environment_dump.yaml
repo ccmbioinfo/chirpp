@@ -124,10 +124,6 @@ dependencies:
       - decorator==5.1.1
       - defusedxml==0.7.1
       - dill==0.3.6
-      - en-core-med7-lg==3.4.2.1
-      - en-core-med7-trf==3.4.2.1
-      - en-core-sci-scibert==0.5.1
-      - en-core-web-trf==3.5.0
       - et-xmlfile==1.1.0
       - evaluate==0.4.0
       - exceptiongroup==1.1.2
@@ -174,8 +170,6 @@ dependencies:
       - markupsafe==2.1.3
       - matplotlib==3.7.1
       - matplotlib-inline==0.1.6
-      - medspacy==1.1.2
-      - medspacy-quickumls==3.0
       - mistune==2.0.5
       - mpmath==1.3.0
       - multidict==6.0.4
@@ -257,7 +251,6 @@ dependencies:
       - safetensors==0.3.3
       - scikit-learn==1.2.2
       - scipy==1.10.1
-      - scispacy==0.5.2
       - seaborn==0.12.2
       - send2trash==1.8.0
       - sentence-transformers==2.2.2

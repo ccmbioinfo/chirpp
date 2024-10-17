@@ -1,11 +1,8 @@
 # please only use the packages that you are actively importing
-spacy
-medspacy
-spacy_transformers
 pandas
 Levenshtein
 numpy
 sentence-transformers
-sqlalchemy==1.4
+sqlalchemy
 python-dotenv
 psycopg2

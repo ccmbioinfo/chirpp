@@ -22,5 +22,7 @@ dependencies:
       - python-dateutil
       - openpyxl
       - SQLAlchemy
+      - python-dotenv
+      - psycopg2
 variables:
   PYTHONNOUSERSITE: '0'
