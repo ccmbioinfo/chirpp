@@ -1,6 +1,8 @@
-from .utils import *
 
+import pandas as pd
+from chirpp.postprocess.utils import *
 
+#TODO this needs to be refactored to utils so I can use it on database prepare report
 class PostProcess:
     def __init__(self, raw_notes, inference_notes, params):
         """
@@ -16,11 +18,11 @@ class PostProcess:
         raw_notes["Arrival Date"] = pd.to_datetime(raw_notes["Arrival Date"])
         inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"])
         inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
-        inference_notes = inference_notes[["CSN", 'MRN', 'Arrival Date', 'probs', 'to_summarize', 'PHAC Narrative',
+        inference_notes = inference_notes[['MRN', 'Arrival Date', 'probs', 'to_summarize', 'PHAC Narrative',
                                            'pre_processed', 'io', 'intent', 'sub']]
         merged = raw_notes.merge(inference_notes, how="inner", on=["MRN", "Arrival Date"])
         merged["Arrival Time"] = pd.to_datetime(merged["Arrival Time"].astype(str))
-        merged = merged.groupby(["CSN", "MRN", "Arrival Date", "Arrival Time"])
+        merged = merged.groupby(["MRN", "Arrival Date", "Arrival Time"])
 
         report_df = pd.DataFrame(columns=self.params["report_header"])
 
@@ -99,7 +101,7 @@ class PostProcess:
                 bp1 = 999
             else:
                 no1, bp1 = injuries(diag)
-            report_disposition = get_disposition(merged, disp, no1, bp1)
+            report_disposition = get_disposition(merged, disp, no1, bp1, complaint)
             subid = get_substances(note, has_substance)
 
             autofill_cols["NO1"].append(no1)

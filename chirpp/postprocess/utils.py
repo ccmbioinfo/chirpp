@@ -426,7 +426,7 @@ def get_substances(clean_text, has_substance, nlp=med_nlp):
     return substance
 
 
-def get_disposition(merged_notes, disposition, no1, bp1):
+def get_disposition(merged_notes, disposition, no1, bp1, complaint):
     """
     return the disposition that is defined in the chirpp requirements, some of these are very hard to figure out
     and those are ignored for the time being
@@ -439,6 +439,8 @@ def get_disposition(merged_notes, disposition, no1, bp1):
     elif disposition in ["Admit", "Transfer to Another Facility", "Send to OR", "Send to Clinic"]:
         if no1 == 71 and bp1 == 900:
             disp_code = 8
+        elif complaint=="Medical Device Problem":
+            disp_code = 8
         else:
             disp_code = 7
     elif disposition == "Deceased":
@@ -450,7 +452,7 @@ def get_disposition(merged_notes, disposition, no1, bp1):
 
     return disp_code
 
-#TODO
+
 def touchups(data):
     """
     these are some edge cases that we noticed while processing the notes, hopefully in the future these will be removed
@@ -464,6 +466,8 @@ def touchups(data):
     data["I/O"][data["PHAC Narrative"].str.contains("washroom")]=1
     data["I/O"][data["PHAC Narrative"].str.contains("bathroom")] = 1
     data["DISP"][data["Diagnosis"].str.lower() == "pulled elbow"] = 3
+    data["IN"][data["NO1"]==71]=16
+
     return data
 
 
