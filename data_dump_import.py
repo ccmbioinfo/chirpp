@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from chirpp.database import tables
 from dotenv import load_dotenv
 from math import floor
+from tqdm import tqdm
 
 load_dotenv()
 user=os.environ["DB_USER"]
@@ -13,7 +14,7 @@ pwd=os.environ["DB_PWD"]
 port=os.environ["DB_PORT"]
 db=os.environ["DB_NAME"]
 
-db = create_engine('postgresql+psycopg2://{}:{}}@localhost:{}/{}'.format(user, pwd, port, db))
+db = create_engine('postgresql+psycopg2://{}:{}@localhost:{}/{}'.format(user, pwd, port, db))
 
 project_meta = MetaData(bind=db)
 session = Session(db)
@@ -121,3 +122,26 @@ for file, sheets in zip(files, num_sheets):
 
         old_csns = old_csns + visits["csn"].tolist()
         old_csns = list(set(old_csns))
+
+
+files = os.listdir("reports")
+visits=pd.read_sql("select mrn, arrival_date, csn from visits", db)
+visits["arrival_date"]=pd.to_datetime(visits["arrival_date"])
+for file in tqdm(files):
+    dat=pd.read_excel("reports/" + file, sheet_name=1)
+    dat["ER Date"] = pd.to_datetime(dat["ER Date"])
+    dat=dat.merge(visits, how="inner", left_on=["MRN", "ER Date"], right_on=["mrn", "arrival_date"])
+    dat=dat.rename(columns={"INJ DATE":"injury_date", "Hr":"injury_hour", "Min":"injury_min", "AM/PM":"am_pm",
+                            "I/O":"i_o", "LOCATION":"location", "AREA":"area", "PLACE":"place", "PHAC Narrative":"phac_narrative",
+                            "W4P":"w4p", "NO1":"no1", "NO2":"no2", "NO3":"no3", "BP1":"bp1", "BP2":"bp2", "BP3":"bp3",
+                            "Notes":"notes", "subID":"sub_id", "SPORTS CODE":"sports_code", "DISP":"disp", "IN":"intent",
+                            'veh p':'veh_p'})
+
+    dat=dat[["csn", "injury_date", "injury_hour", "injury_min", "am_pm", "i_o", "location", "area", "place", "phac_narrative",
+             "w4p", "no1", "no2", 'no3', 'bp1', 'bp2', 'bp3', 'notes', 'sub', 'sub_id', 'sports_code', 'disp', 'intent',
+             'veh', 'veh_p', 'sd1', 'sd2', 'sd3', 'sd4', 'sd5']]
+    dat.to_sql("chirpp_report", db, if_exists="append", index=False)
+
+
+
+

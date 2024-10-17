@@ -1,63 +1,16 @@
 from datetime import datetime
 
 import pandas as pd
-from jsonschema.exceptions import SchemaError
+
 from sqlalchemy import MetaData, select
 from sqlalchemy.orm import Session
 
 from chirpp.database import utils
 from chirpp.database.query_builder import QueryBuilder
 
-#TODO this needs to move to postprocessing
-class Event:
-    """
-    This is the event code class, it will have context awere search and full text search
-    """
 
-    def __init__(self, name, keywords, rules=None, contex_aware=True, description=None,):
-        """
-        create a contex aware event class, this will be filling up the
-        :param keywords:
-        :param rules:
-        """
-        self.name = name
-        self.description = description
-        self.keywords = keywords
-        self.contex_aware = contex_aware
-        if self.contex_aware:
-            if self.verify_schema(rules) and rules is not None:
-                self.rules = rules
-            elif rules is None:
-                raise ValueError("rules cannot be None for context aware labels")
-            else:
-                raise SchemaError("rules do not match the proper medspacy schema")
-
-    def to_db(self):
-        pass
-
-    def from_db(self):
-        pass
-
-    def search(self, start, end):
-        pass
-
-    def update_notes(self):
-        pass
-
-    def toggle(self):
-        """
-        if in the database toggle active/inactive
-        :return: the result of the toggle, error if not in the database
-        """
-        pass
-
-    def verify_schema(self, schema):
-        """
-        verify the json schema of the context rules
-        :return:
-        """
-        pass
-
+#TODO get_report needs columns fixed, it does not get all the columns for the acutal report yet
+# it also needs to rename them to the originals
 
 class DataBase:
     """
@@ -75,15 +28,12 @@ class DataBase:
         self.mrns = [item[0] for item in self.session.execute(mrns).fetchall()]
         csns = select(self.tables["visits"].c.csn)
         self.csns = [item[0] for item in self.session.execute(csns).fetchall()]
-        #TODO move this to params
-        self.col_dict={"INJ DATE": "injury_date", "Hr": "injury_hour", "Min": "injury_min", "AM/PM": "am_pm",
-                              "I/O": "i_o", "LOCATION": "location", "AREA": "area", "PLACE": "place",
-                              "PHAC Narrative": "phac_narrative",
-                              "W4P": "w4p", "NO1": "no1", "NO2": "no2", "NO3": "no3", "BP1": "bp1", "BP2": "bp2",
-                              "BP3": "bp3",
-                              "Notes": "notes", "subID": "sub_id", "SPORTS CODE": "sports_code", "DISP": "disp",
-                              "IN": "intent",
-                              'veh p': 'veh_p'}
+        self.col_dict={"CSN":"csn", "INJ DATE": "injury_date", "Hr": "injury_hour", "Min": "injury_min", "AM/PM": "am_pm",
+                       "I/O": "i_o", "LOCATION": "location", "AREA": "area", "PLACE": "place",
+                       "PHAC Narrative": "phac_narrative",  "W4P": "w4p", "NO1": "no1", "NO2": "no2",
+                       "NO3": "no3", "BP1": "bp1", "BP2": "bp2","BP3": "bp3", "subID": "sub_id",
+                       "SPORTS CODE": "sports_code", "DISP": "disp", "IN": "intent",'veh p': 'veh_p',
+                       "Notes":"notes"}
 
         # this is for getting the notes from the database and converting back to the original
         col_dict_inverted={}
@@ -98,7 +48,7 @@ class DataBase:
         :param preprocess: PreProcess instance
         :return: None, things will be imported to the database
         """
-        patients, visits, referrals, problems, notes = utils.get_sections(preprocess.merged_notes)
+        patients, visits, referrals, problems, notes = utils.get_sections(preprocess.raw_notes)
         # filter for unique constraint
         patients = patients[~patients["mrn"].isin(self.mrns)]
         visits = visits[~visits["csn"].isin(self.csns)]
@@ -107,12 +57,16 @@ class DataBase:
         notes = notes[~notes["csn"].isin(self.csns)]
 
         # TODO switch to sqlalchemy
+        visits["csn"]=visits["csn"].astype(int)
+        visits.to_sql("visits", self.engine, if_exists="append", index=False)
+
         patients.to_sql("patients", self.engine, if_exists="append", index=False)
         referrals.to_sql("referrals", self.engine, if_exists="append", index=False)
-        visits.to_sql("visits", self.engine, if_exists="append", index=False)
+
         problems.to_sql("problems", self.engine, if_exists="append", index=False)
         notes.to_sql("notes", self.engine, if_exists="append", index=False)
 
+    #TODO need to get postal code and process
     def process_report(self, postprocess):
         """
         take a postprocess instance and add to the database, we are only adding the sheet 2
@@ -167,18 +121,27 @@ class DataBase:
         problems = problems.drop(columns=["problem", "id"]).drop_duplicates()
         problems["problem_list"]=merged_probs
 
-        visits=visits.merge(patients, how="inner", on="mrn")
-        visits=visits.merge(referrals, how="inner", on="csn")
-        visits=visits.merge(notes, how="inner", on="csn")
-        visits=visits.merge(problems, how="inner", on="csn")
+        visits=visits.merge(patients, how="left", on="mrn")
+        visits=visits.merge(referrals, how="left", on="csn")
+        visits=visits.merge(notes, how="left", on="csn")
+        visits=visits.merge(problems, how="left", on="csn")
         visits=visits[["csn", "mrn", "sex", "dob", "age", "postal_code", "arrival_date",
                        "arrival_time", "los", "chief_complaint", "problem_list", "diagnosis",
                        "ctas", "referrals", "note_type", "author_type", "author_service",
-                       "note_text"]]
+                       "note_text", 'address', 'city', 'province', 'disposition', 'ctas', ]]
+        visits=visits.rename(columns={
+            "csn":"CSN", "mrn":'MRN', 'sex':'Sex', 'dob':'Date of Birth', 'age':'Age (Years)',
+            'arrival_date':'Arrival Date', 'arrival_time':'Arrival Time', 'address':'Address',
+            'city':'City', 'province':'Province', 'postal_code':'Postal Code',
+            'chief_complaint':'Chief Complaint', 'problem_list':'Problem List', 'los':'LOS',
+            'disposition':'Disposition', 'refferrals':'Referral Order', 'diagnosis':"Diagnosis",
+            'ctas':'CTAS', 'note_type':'Note Type', 'author_type':'Author Type',
+            'author_service':'Author Service', 'note_text':'Note Text',
+        })
 
-        visits=visits.rename(columns=self.col_dict_inverted)
         return visits
 
+    #TODO get appropriate columns, process postal and scramble mrn
     def get_report(self, start, end):
         """
         generate a report from the database
@@ -188,14 +151,21 @@ class DataBase:
         """
         case_table=self.tables["chirpp_report"]
         visit_table=self.tables["visits"]
+        notes_table=self.tables["notes"]
+        patients_table=self.tables["patients"]
 
-        cases=select(case_table).where(case_table.c.injury_date >= start and case_table.c.injury_date <= end)
+        visits=select(visit_table).where(visit_table.c.arrival_date >= start and visit_table.c.arrival_date <= end)
+        visits =pd.DataFrame(visits)
+
+        cases=select(case_table).where(case_table.c.csn.in_(visit_table["csn"].to_list()))
         cases=pd.DataFrame(cases)
-        visits=select(visit_table.c.mrn, visit_table.c.csn).where(visit_table.c.csn.in_())
-        visits=pd.DataFrame(visits)
 
-        cases=cases.merge(visits, how="inner", on="csn")
-        return cases
+        patients=select(patients_table).where(patients_table.c.mrn.in_(visit_table["mrn"].to_list()))
+
+        notes=select(notes_table.c.csn, notes_table.c.note_type, notes_table.c.note_text).\
+            where(notes_table.c.csn.in_(visit_table["csn"].to_list()))
+
+        report=utils.prepare_report(visits, patients, cases, notes)
 
     def update_raw(self, txt_file):
         pass
