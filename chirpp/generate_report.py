@@ -6,7 +6,6 @@ from datetime import datetime
 
 import pandas as pd
 import yaml
-from dotenv import load_dotenv
 from torch.cuda import is_available
 from transformers import logging as hf_logging
 import dotenv
@@ -29,14 +28,8 @@ parser.add_argument('-c', '--config', type=str, help='config file in yaml format
 parser.add_argument('-d', '--to_database', type=bool, help='Import notes to database')
 parser.add_argument('-e', '--to_excel', type=bool, help='create an excel report')
 
-
-
 args = parser.parse_args()
 
-if not args.to_database or not args.to_excel:
-    raise ValueError("Neither report or database is specified, there is no where to save the report")
-
-load_dotenv()
 with open(args.config) as f:
     params = yaml.safe_load(f)
 
@@ -66,27 +59,22 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Preprocessing
 
 preprocess = Preprocess(args.notes, params["pre_process"]["terms_to_fix"])
 
-preprocess = preprocess.read_raw_notes()
-preprocess = preprocess.merge_lines(line_col=params["pre_process"]["line_col"],
-                                                    group_col=params["pre_process"]["group_cols"],
-                                                    text_col=params["pre_process"]["text_col"],
-                                                    )
-
+preprocessed_notes = preprocess.read_raw_notes()
 
 additional_columns = params["pre_process"]["include_cols"] + [params["pre_process"]["line_col"]]
 
-preprocess = preprocess.get_relevant_notes(filters=params["pre_process"]["note_types"],
+preprocess = preprocessed_notes.get_relevant_notes(filters=params["pre_process"]["note_types"],
                                                            additional_columns=additional_columns)
 include_cols = params["pre_process"]["include_cols"]
 include_cols.append(params["pre_process"]["line_col"])
-
-preprocess = preprocess.process_notes(section_remover=section_remover_for_inference,
+preprocess = preprocess.merge_notes(section_remover=section_remover_for_inference,
                                                     include_cols=include_cols,
                                                     group_cols=params["pre_process"]["group_cols"],
                                                     orientation=params["pre_process"]["orientation"],
                                                     keep_unlabelled=params["pre_process"]["keep_unlabelled"],
                                                     anonymize=params["pre_process"]["anonymize"],
-                                                    language_model="en_core_web_trf")
+                                                    language_model="en_core_web_trf",
+                                                    line_col=params["pre_process"]["line_col"])
 
 # TODO there probably is a better way than to create a copy
 inference_notes = preprocess.merged_raw.copy()
@@ -154,18 +142,9 @@ if params['inference']['anonymize_summaries'] and not params["pre_process"]['ano
         new_summaries.append(deidentified)
     summaries=new_summaries
 
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Calculating cosine similarities")
 
-distances = infer_notes.calculate_cosine_distances(params["inference"]["distance_model"],
-                                                   inference_notes[params["inference"]["note_col"]][
-                                                       inference_notes["to_summarize"]],
-                                                   summaries)
-
-inference_notes["PHAC Narrative"]="None"
-inference_notes["cosine_similarity"]=None
-
+inference_notes["PHAC Narrative"]=None
 inference_notes["PHAC Narrative"][inference_notes["to_summarize"]] = summaries
-inference_notes["cosine_similarity"][inference_notes["to_summarize"]] = distances
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying intent")
 
@@ -199,7 +178,7 @@ inference_notes["io"][(inference_notes["to_summarize"]) & (inference_notes["inte
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Report")
 
 params["post_process"]["pos_complaints"] = params["inference"]["pos_complaints"]
-postprocess = PostProcess(preprocess.raw_notes, inference_notes, params["post_process"])
+postprocess = PostProcess(preprocessed_notes.raw_notes, inference_notes, params["post_process"])
 postprocess = postprocess.autofill()
 postprocess=postprocess.touchups()
 

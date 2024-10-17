@@ -3,7 +3,6 @@ import os
 from medspacy.section_detection import SectionRule
 
 from .utils import *
-from ..database.data_dump_import import note_text, notes_grouped
 
 
 class SectionRemover:
@@ -107,35 +106,15 @@ class Preprocess:
         self.raw_notes = notes
         return self
 
-    #TODO merged notes needs to go to the db
-    def merge_lines(self, line_col="LINE", group_col="Note ID", text_col="Note Text"):
-        """
-        take the epic dump and merge notes by line because epic cannot be bothered with having a proper full text column
-        :param line_col:
-        :param group_col:
-        :param text_col:
-        :return:
-        """
-        notes_grouped=self.raw_notes.groupby(group_col)
-        notes_merged=[]
-        for _, group in notes_grouped:
-            note_text = " ".join(
-                [str(x) for x in
-                 group.sort_values(by=[line_col], ignore_index=True)[text_col].tolist()])
-            notes_merged.append(note_text)
-        merged_notes=self.raw_notes.drop(columns=[group_col, line_col, text_col]).drop_duplicates()
-        merged_notes["merged_notes"]=notes_merged
-        self.merged_notes=merged_notes
-        return self
-
     def get_relevant_notes(self, filters, additional_columns):
-        df = self.merged_notes
+        df = self.raw_notes
         df = df[
             [
                 "CSN",
                 "MRN",
                 "Arrival Date",
                 "Arrival Time",
+                "LINE",
                 "Note Text",
                 "Note Type",
             ] + additional_columns
@@ -147,20 +126,21 @@ class Preprocess:
         self.for_preprocess = df
         return self
 
-    #this only takes the filtered note types, it does not merge everything.
-    def process_notes(self, section_remover=None, include_cols=None, group_cols=["MRN", "Arrival Date"],
-                    orientation="front", keep_unlabelled=True, anonymize=True, language_model="en_core_web_trf"):
+    def merge_notes(self, section_remover=None, include_cols=None, group_cols=["CSN"],
+                    orientation="front", keep_unlabelled=True, anonymize=True, language_model="en_core_web_trf",
+                    line_col="Note Line"):
         """
-        merged notes based on note types (like triage and provider notes) and have it in a single text
+        merge repeated notes of same visit into a single note text to be used by llms
         :param section_remover: an instance of SectionRemover
         :param include_cols: which additional columns to include in the note text like Chief complaint, diagnosis etc., an iterable
         :param group_cols: which columns to group by default is ["MRN", "Arrival Date"] this way each pandas.groupby will
         be specific to one visit of one patient, an iterable or str
         :param orientation: which way to add the extra columns, at the beginning of the note or at the end?, str
-        :return: self with preprocesed note filled in, these notes will be passed to inference and database
+        :return: self with merged raw filled in
         """
         notes_grouped = self.for_preprocess.groupby(group_cols)
-        preprocessed_notes=[]
+
+        merged_raw = []
         if include_cols is not None:  # to make sure that they are stored at the end, they do not change with the row
             # there will always be a single value
             group_cols = group_cols + include_cols
@@ -172,7 +152,7 @@ class Preprocess:
 
             note_text = " ".join(
                 [str(x) for x in
-                 group.sort_values(by=["Note Type"], ignore_index=True)["Note Text"].tolist()])
+                 group.sort_values(by=["Note Type", line_col], ignore_index=True)["Note Text"].tolist()])
 
             note_text = remove_extra_spaces(note_text)
 
@@ -202,12 +182,14 @@ class Preprocess:
                 note_text = deidentify(note_text, language_model, name)
 
             df["Note Text"] = note_text
-            preprocessed_notes.append(df)
-        preprocessed_notes = pd.concat(preprocessed_notes)
+            merged_raw.append(df)
+        merged_raw = pd.concat(merged_raw)
+        # TODO need to make this less hacky
+        merged_raw = merged_raw[~merged_raw[["MRN", "Arrival Date"]].duplicated()]
 
-        preprocessed_notes = preprocessed_notes[~preprocessed_notes[["MRN", "Arrival Date"]].duplicated()]
-        self.preprocessed_notes = preprocessed_notes
+        self.merged_raw = merged_raw
         return self
+
 
 
 
