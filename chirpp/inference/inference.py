@@ -1,6 +1,6 @@
 import torch
 from sentence_transformers import SentenceTransformer, util
-from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer, AutoModelForSeq2SeqLM, AutoModel
 
 
 class NoModelError(Exception):
@@ -14,7 +14,7 @@ class Inference:
 
     def __init__(self, classification_model, summarization_model, classification_labels,
                  intent_model, intent_labels, substance_model, substance_labels, io_model, io_labels,
-                 device=None):
+                 embedding_model, tasks, device=None):
         """
         init method, specify pipeline parameters for classification and summarization
         :param classification_model: model directory for the trained classification model
@@ -63,6 +63,10 @@ class Inference:
             self.io_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
         else:
             raise NoModelError("There is no inside outside model")
+
+        # for some reason this needs to be in the huggingface cache but not in a folder
+        if embedding_model is not None:
+            self.embedding_model = AutoModel.from_pretrained(embedding_model, trust_remote_code=True).to(device)
 
     def classify(self, notes, note_col="Note Text", include_labels=False):
         """
@@ -235,3 +239,22 @@ class Inference:
                 results.append(None)
 
         return results
+
+    def get_embeddings(self, notes, notes_col, tasks):
+        """
+        calculate embeddings for the cleaned up note texts this will be part of the full text search and outlier
+        detection methods
+        :param notes_col: notes, sames as above
+        :param tasks: list of tasks to be passed to the model, if None just plain embeddings will be returned
+        :return: a dictionary of embeddings where key is the task and the value is the embedding
+        """
+
+        if tasks is None:
+            embeddings=self.embedding_model.encode(notes[notes_col].to_list())
+            return embeddings
+        else:
+            embed_dict={}
+            for task in tasks:
+                embed_dict[task]=self.embedding_model.encode(notes[notes_col].to_list(), task=task)
+            return embed_dict
+

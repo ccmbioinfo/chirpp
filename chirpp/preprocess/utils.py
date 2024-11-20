@@ -69,6 +69,11 @@ def process_epic_dump(note_file, delim="|"):
                        (pd.to_datetime(contents["Departure DateTime"]) - pd.to_datetime(
                            contents["Arrival DateTime"])).to_list()]
     contents["Arrival Time"] = pd.to_datetime(contents["Arrival DateTime"]).dt.time
+    contents["MRN"]=contents["MRN"].astype(int)
+    contents["CSN"]=contents["CSN"].astype(int)
+    contents["CTAS"][contents["CTAS"]==""]=0
+    contents["CTAS"] = contents["CTAS"].astype(int)
+    
     return contents
 
 def split(ls, max_size, combine=True, join_w=" "):

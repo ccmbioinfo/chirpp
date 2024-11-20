@@ -111,8 +111,6 @@ class Preprocess:
         df = df[
             [
                 "CSN",
-                "MRN",
-                "Arrival Date",
                 "Arrival Time",
                 "LINE",
                 "Note Text",

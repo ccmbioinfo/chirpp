@@ -5,11 +5,13 @@ import os
 from datetime import datetime
 
 import pandas as pd
+import numpy as np
 import yaml
 from torch.cuda import is_available
 from transformers import logging as hf_logging
 import dotenv
 from sqlalchemy import create_engine
+from triton.language.semantic import store
 
 hf_logging.set_verbosity_error()
 
@@ -27,6 +29,8 @@ parser.add_argument('-c', '--config', type=str, help='config file in yaml format
                     action="store")
 parser.add_argument('-d', '--to_database', type=bool, help='Import notes to database')
 parser.add_argument('-e', '--to_excel', type=bool, help='create an excel report')
+parser.add_argument('--save_embeddings', type=bool, help='save embeddings to npz file')
+
 
 args = parser.parse_args()
 
@@ -173,6 +177,10 @@ io = infer_notes.get_io(notes=inference_notes[(inference_notes["to_summarize"]) 
 inference_notes["io"] = None
 inference_notes["io"][(inference_notes["to_summarize"]) & (inference_notes["intent"] == 10)] = io
 
+embeddings=infer_notes.get_embeddings(notes=inference_notes,
+                                      notes_col=params["inference"]["note_col"],
+                                      tasks=params["inference"]["embeddings_tasks"])
+
 
 # post processing to generate the final output
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Report")
@@ -182,7 +190,7 @@ postprocess = PostProcess(preprocessed_notes.raw_notes, inference_notes, params[
 postprocess = postprocess.autofill()
 postprocess=postprocess.touchups()
 
-
+#TODO embeddings
 if args.to_database:
     print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Moving things to the database")
 
@@ -191,12 +199,23 @@ if args.to_database:
                                   os.getenv("DB_PORT"), os.getenv("DB_NAME")))
 
     database=DataBase(engine)
-    database.process_dump(preprocess)
-    database.process_report(postprocess)
+    database.process_dump(preprocess.raw_notes)
+    database.process_report(postprocess.sheet2)
+    database.import_processed_notes(inference_notes["CSN"],
+                                    inference_notes[params["inference"]["note_col"]],
+                                    embeddings)
+
+
 
 if args.to_excel:
     print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Creating Excel Report")
     postprocess.create_report(args.outname)
+
+if args.save_embeddings:
+    filename=args.outname.replace(".xlsx", "")+"_embeddings.npz"
+    np.savez(filename, classification=embeddings["classification"],
+             separation=embeddings["separation"], matching=embeddings["text-matching"],
+             query=embeddings["retrieval.query"], passage=embeddings["retrieval.passage"])
 
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Done!")

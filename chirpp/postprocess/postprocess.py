@@ -18,9 +18,9 @@ class PostProcess:
         raw_notes["Arrival Date"] = pd.to_datetime(raw_notes["Arrival Date"])
         inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"])
         inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
-        inference_notes = inference_notes[['MRN', 'Arrival Date', 'probs', 'to_summarize', 'PHAC Narrative',
+        inference_notes = inference_notes[['CSN',  'probs', 'to_summarize', 'PHAC Narrative',
                                            'pre_processed', 'io', 'intent', 'sub']]
-        merged = raw_notes.merge(inference_notes, how="inner", on=["MRN", "Arrival Date"])
+        merged = raw_notes.merge(inference_notes, how="inner", on=["CSN"])
         merged["Arrival Time"] = pd.to_datetime(merged["Arrival Time"].astype(str))
         merged = merged.groupby(["MRN", "Arrival Date", "Arrival Time"])
 
@@ -121,7 +121,9 @@ class PostProcess:
         some manual tweakign of the columns based on feedback hopefully will not be needed soon
         :return:
         """
-        self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "to_summarize"])
+        self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "to_summarize", "probs"])
+        self.sheet1 = self.sheet1.drop(columns=["pre_processed", "Disposition", "to_summarize", "probs"])
+
         self.sheet2["sd1"] = -1
         self.sheet2["SPORTS CODE"] = 4
         self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["NO2"] = 42

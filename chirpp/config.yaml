@@ -14,8 +14,8 @@ pre_process:
   section_rules: "chirpp/preprocess/preprocess_patterns.json"
   note_types:
     Note Type: ["ED Provider Notes", "ED Triage Notes"]
-  include_cols: ["Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "LOS"]
-  group_cols: ["MRN", "Arrival Date"]
+  include_cols: ["MRN", "Arrival Date", "Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "LOS"]
+  group_cols: ["CSN"]
   orientation: "front"
   keep_unlabelled: true
   anonymize: false
@@ -61,6 +61,11 @@ inference:
   io_model: "chirpp/models/distilbert_io"
   intent_model: "chirpp/models/albert_xxl_intent"
   substance_model: "chirpp/models/albert_xxl_sub"
+  # for some reason the huggingface thing needs to point to the model cannot save it to a folder
+  # we are doing the same thing for the spacy model and huggingface will download it and keep in cache in the
+  #vm I don't think this is a big deal since we are using the model as is and once downloaded will stay in the vm
+  embedding_model: "jinaai/jina-embeddings-v3"
+  embedding_tasks: ["classification", "separation", "text-matching", "retrieval.passage", "retrieval.query"]
 
   intent_labels: 7
   io_labels: 2
@@ -123,3 +128,6 @@ post_process:
               'Consult Follow Up', 'Admission', 'Discharge Summary', 'Progress Notes',
               'Assessment & Plan Note',  'ED Trauma Note', 'ED Trauma Notes',
               'ED Procedure Note', 'Procedures','Op Note', 'Transfer In / Advice Note']
+
+  task_to_colum: {"classification":"jina_class_embed", "separation":"jina_sep_embed", "text-matching":"jina_match_embed",
+  "retrieval.query":"jina_query_embed", "retrieval.passage":"jina_pass_embed"}

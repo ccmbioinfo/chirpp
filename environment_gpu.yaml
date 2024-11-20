@@ -6,7 +6,8 @@ channels:
 dependencies:
   - python=3.10
   - pytorch-cuda=12.4
-  - cudatoolkit 
+  - cudatoolkit
+  - cuda-nvcc
   - pip
   - pip:
       - numpy==1.26.4
@@ -28,5 +29,7 @@ dependencies:
       - python-dotenv
       - psycopg2
       - nvidia-cuda-runtime-cu12==12.4.*
+      - flash-attn
+      - einops
 variables:
   PYTHONNOUSERSITE: '0'

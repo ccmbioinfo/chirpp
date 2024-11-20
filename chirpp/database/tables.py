@@ -9,6 +9,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import declarative_base
 
+from pgvector.sqlalchemy import Vector
+
 
 class TSVector(types.TypeDecorator):
     impl = TSVECTOR
@@ -21,14 +23,13 @@ class Patients(Base):
     __tablename__ = "patients"
     mrn = Column(Integer, index=True, primary_key=True)  # this is mrn
     dob = Column(Date)
-    # TODO there might be some edge cases due to leap years might need to use dateutil
-    age = Column(Integer)
 
 
 class Visits(Base):
     __tablename__ = "visits"
     csn = Column(Integer, index=True, primary_key=True)
     sex = Column(String)
+    age = Column(Integer)
     mrn = Column(Integer, ForeignKey("patients.mrn"), index=True)
     arrival_date = Column(Date)
     arrival_time = Column(Time)
@@ -67,19 +68,28 @@ class Notes(Base):
     author_type = Column(String)
     author_service = Column(String)
     note_text = Column(Text)
-    processed_notes = Column(String)
     # this is the postgres ts vector column, it is a computed column
     notes_ts_vector = Column(TSVector(), Computed(
         "to_tsvector('english', note_text)",
         persisted=True))
-    processed_ts_vector = Column(TSVector(), Computed(
-        "to_tsvector('english', processed_notes)", 
-        persisted=True))
 
     __table_args__ = (Index('ix_raw_notes_ts_vector',
-                            notes_ts_vector, postgresql_using='gin'),
-                      Index('ix_processed_ts_vector', processed_ts_vector, 
-                             postgresql_using='gin'),)
+                            notes_ts_vector, postgresql_using='gin'), )
+
+class ProcessedNotes(Base):
+    __tablename__="processed_notes"
+    id=Column(Integer, autoincrement=True, primary_key=True, index=True)
+    csn = Column(Integer, ForeignKey("visits.csn"))
+    note_text=Column(Text)
+    note_text_ts_vector=Column(TSVector(), Computed("to_tsvector('english', note_text)",
+                               persisted=True))
+    jina_query_embed=Column(Vector(1024))
+    jina_pass_embed = Column(Vector(1024))
+    jina_sep_embed=Column(Vector(1024))
+    jina_class_embed=Column(Vector(1024))
+    jina_match_embed=Column(Vector(1024))
+    __table_args__ = (Index('ix_note_text_ts_vector',
+                            note_text_ts_vector, postgresql_using='gin'), )
 
 
 class Cases(Base):
@@ -94,6 +104,7 @@ class Cases(Base):
     location = Column(Integer)
     area = Column(Integer)
     place = Column(String)
+    sk_narratvie=Column(Text)
     phac_narrative = Column(Text)
     w4p = Column(Integer)
     no1 = Column(Integer)
@@ -123,6 +134,9 @@ class Cases(Base):
  
     notes_ts_vector = Column(TSVector(), Computed(
         "to_tsvector('english', notes)",
+        persisted=True))
+    sk_ts_vector = Column(TSVector(), Computed(
+        "to_tsvector('english', sk_narrative)",
         persisted=True))
 
     __table_args__ = (

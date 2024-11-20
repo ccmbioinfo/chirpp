@@ -14,7 +14,7 @@ from utils import *
 
 
 class Autofill:
-    def __init__(self, raw_notes, inference_notes):
+    def __init__(self, sheet2):
         pass
 
     def fill_substances(self):
