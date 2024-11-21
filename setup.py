@@ -11,5 +11,6 @@ setup(
                       "sentence-transformers", "Levenshtein"],
     zip_safe=False,
     scripts=["chirpp/generate_report.py"],
+    package_data={"": ["*.json"]},
     include_package_data=True
 )

@@ -112,7 +112,6 @@ class Preprocess:
             [
                 "CSN",
                 "Arrival Time",
-                "LINE",
                 "Note Text",
                 "Note Type",
             ] + additional_columns

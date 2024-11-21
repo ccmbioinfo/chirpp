@@ -59,13 +59,17 @@ class DataBase:
         self.get_mrns()
         self.get_csns()
 
-    def process_report(self, cases, col_dict):
+    def process_report(self, cases, col_dict=utils.col_dict):
         """
         take a postprocess instance and add to the database, we are only adding the sheet 2
         :param postprocess: chirpp.postprocess.postprocess.Postprocess instance
         :return: None, things will be imported to the database
         """
-        cases=cases.rename(col_dict)
+        csns = select(self.tables["chirpp_report"].c.csn)
+        csns = [item[0] for item in self.session.execute(csns).fetchall()]
+        
+        cases=cases.rename(columns=col_dict)
+        cases = cases[~cases["csn"].isin(csns)]
 
         cases = cases[["csn", "injury_date", "injury_hour", "injury_min", "am_pm", "i_o", "location", "area",
                        "place","phac_narrative","w4p", "no1", "no2", 'no3', 'bp1', 'bp2', 'bp3', 'notes', 'sub',
@@ -84,22 +88,30 @@ class DataBase:
         :return: nothing update the database or raise errors
         """
         notes_table=self.meta.tables["processed_notes"]
-        num_notes=processed_notes.shape[0]
+        num_notes=len(processed_notes)
         keys=list(embedding_dict.keys())
+
+        csns = select(self.tables["processed_notes"].c.csn)
+        csns = [item[0] for item in self.session.execute(csns).fetchall()]
+        
+        
         for key in keys:
             if embedding_dict[key].shape[0] != num_notes:
                 raise ValueError("embedding shape does not match number of notes")
             else:
                 for i in range(num_notes):
-                    statement = notes_table.insert().values(csn=csns[i],
+                    if csns[i] not in csns:
+                        statement = notes_table.insert().values(csn=csns[i],
                                                             note_text=processed_notes[i],
                                                             jina_match_embed=embedding_dict["text-matching"][i, :],
                                                             jina_pass_embed=embedding_dict["retrieval.passage"][i, :],
                                                             jina_sep_embed=embedding_dict["separation"][i, :],
                                                             jina_class_embed=embedding_dict["classification"][i, :],
                                                             jina_query_embed=embedding_dict["retrieval.query"][i, :], )
-                    self.session.execute(statement)
-                    self.session.commit()
+                        self.session.execute(statement)
+                        self.session.commit()
+                    else:
+                        continue
 
     # use this to pass a set of raw reports, this will be a bunch of joins
     # I need to select Triage and ED Provider notes from the database and pass it ot generate report

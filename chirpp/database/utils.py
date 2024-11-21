@@ -8,7 +8,7 @@ col_dict={
     "I/O":"i_o", "LOCATION":"location", "AREA":"area", "PLACE":"place", "SK Narrative":"sk_narrative",
     "PHAC Narrative":"phac_narrative", "W4P":"w4p", "NO1":"no1", "NO2":"no2", "NO3":"no3", "BP1":"bp1",
     "BP2":"bp2", "BP3":"bp3", "IN":"intent", "DISP":"disp", "subID":"sub_id", "SPORTS CODE":"sports_code",
-    "veh p":"veh_p"
+    "veh p":"veh_p", "Notes":"notes"
 }
 
 def invert_dict(dict):

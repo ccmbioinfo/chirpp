@@ -21,7 +21,7 @@ dependencies:
       - pyyaml
       - python-dateutil
       - openpyxl
-      - SQLAlchemy
+      - SQLAlchemy==1.4.54
       - python-dotenv
       - psycopg2
 variables:

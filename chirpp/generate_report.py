@@ -9,7 +9,7 @@ import numpy as np
 import yaml
 from torch.cuda import is_available
 from transformers import logging as hf_logging
-import dotenv
+from dotenv import dotenv_values
 from sqlalchemy import create_engine
 from triton.language.semantic import store
 
@@ -27,15 +27,19 @@ parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
 parser.add_argument('-o', '--outname', type=str, help='Path to outputs')
 parser.add_argument('-c', '--config', type=str, help='config file in yaml format', default="config.yaml",
                     action="store")
-parser.add_argument('-d', '--to_database', type=bool, help='Import notes to database')
-parser.add_argument('-e', '--to_excel', type=bool, help='create an excel report')
-parser.add_argument('--save_embeddings', type=bool, help='save embeddings to npz file')
+parser.add_argument('-d', '--to_database', help='Import notes to database', action="store_true")
+parser.add_argument('-e', '--to_excel', help='create an excel report', action="store_true")
+parser.add_argument('--save_embeddings', help='save embeddings to npz file', action="store_true")
+parser.add_argument('--env_file', help='env_file that contains the information about db connection', action="store")
+
 
 
 args = parser.parse_args()
 
 with open(args.config) as f:
     params = yaml.safe_load(f)
+
+env_values=dotenv_values(args.env_file)  
 
 if is_available():
     device = "cuda:0"
@@ -96,6 +100,8 @@ infer_notes = Inference(classification_model=os.path.abspath(params["inference"]
                         substance_labels=params["inference"]["substance_labels"],
                         io_model=os.path.abspath(params["inference"]["io_model"]),
                         io_labels=params["inference"]["io_labels"],
+                        embedding_model=params["inference"]["embedding_model"],
+                        tasks=params["inference"]["embedding_tasks"],
                         device=device)
 
 # get model probabilities
@@ -179,7 +185,7 @@ inference_notes["io"][(inference_notes["to_summarize"]) & (inference_notes["inte
 
 embeddings=infer_notes.get_embeddings(notes=inference_notes,
                                       notes_col=params["inference"]["note_col"],
-                                      tasks=params["inference"]["embeddings_tasks"])
+                                      tasks=params["inference"]["embedding_tasks"])
 
 
 # post processing to generate the final output
@@ -190,19 +196,21 @@ postprocess = PostProcess(preprocessed_notes.raw_notes, inference_notes, params[
 postprocess = postprocess.autofill()
 postprocess=postprocess.touchups()
 
-#TODO embeddings
+
 if args.to_database:
     print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Moving things to the database")
-
     engine = create_engine('postgresql+psycopg2://{}:{}@{}:{}/{}'. \
-                           format(os.getenv("DB_USER"), os.getenv("DB_PWD"), os.getenv("DB_HOST"), os.getenv("DB_HOST"),
-                                  os.getenv("DB_PORT"), os.getenv("DB_NAME")))
+                           format(env_values["DB_USER"],
+                                  env_values["DB_PWD"], 
+                                  env_values["DB_HOST"],
+                                  env_values["DB_PORT"],
+                                  env_values["DB_NAME"]))
 
     database=DataBase(engine)
     database.process_dump(preprocess.raw_notes)
     database.process_report(postprocess.sheet2)
-    database.import_processed_notes(inference_notes["CSN"],
-                                    inference_notes[params["inference"]["note_col"]],
+    database.import_processed_notes(inference_notes["CSN"].tolist(),
+                                    inference_notes[params["inference"]["note_col"]].tolist(),
                                     embeddings)
 
 
@@ -212,6 +220,7 @@ if args.to_excel:
     postprocess.create_report(args.outname)
 
 if args.save_embeddings:
+    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Saving note text embeddings")
     filename=args.outname.replace(".xlsx", "")+"_embeddings.npz"
     np.savez(filename, classification=embeddings["classification"],
              separation=embeddings["separation"], matching=embeddings["text-matching"],
