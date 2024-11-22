@@ -11,7 +11,6 @@ from torch.cuda import is_available
 from transformers import logging as hf_logging
 from dotenv import dotenv_values
 from sqlalchemy import create_engine
-from triton.language.semantic import store
 
 hf_logging.set_verbosity_error()
 

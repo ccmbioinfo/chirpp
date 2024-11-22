@@ -2,7 +2,7 @@ import os
 
 from medspacy.section_detection import SectionRule
 
-from .utils import *
+from chirpp.preprocess.utils import *
 
 
 class SectionRemover:
