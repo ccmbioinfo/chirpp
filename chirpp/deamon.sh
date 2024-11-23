@@ -6,7 +6,7 @@ while true
 do
   if [[ $(ls | grep "txt") ]]
   then
-    chirpp/chirpp/generate_report.sh
+    chirpp/chirpp/chipp/generate_report.sh
   else
     sleep 1h
   fi

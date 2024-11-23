@@ -10,7 +10,7 @@ files=$(ls .. | grep "Note_Detail")
 
 for file in $files; do
   echo $file
-  python generate_report.py -c config.yaml -n ../$file -o ../reports/$file.xlsx 2>../logs/$file.err
+  python generate_report.py -n ../$file -o ../reports/$file.xlsx -c config.yaml -d -e --env_file .env 2>../logs/$file.err
   if [ $? == 0 ]; then
     # move files and encrypt them
     mv ../$file ../processed

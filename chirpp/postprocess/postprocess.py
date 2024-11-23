@@ -1,4 +1,5 @@
 
+import spacy_transformers
 import pandas as pd
 from chirpp.postprocess.utils import *
 

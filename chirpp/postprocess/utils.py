@@ -4,8 +4,8 @@ import sys
 
 import medspacy
 import pandas as pd
-import spacy
 from medspacy.context import ConText
+import spacy
 
 from chirpp.postprocess.extra_contex_rules import context_rules
 from chirpp.postprocess.target_rules import *
