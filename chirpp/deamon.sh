@@ -1,12 +1,12 @@
 #! /bin/bash
 
-cd ~
+cd /home/epic/chirpp/chirpp/chirpp
 
 while true
 do
-  if [[ $(ls | grep "txt") ]]
+  if [[ $(ls ../.. | grep "Note_Detail") ]]
   then
-    chirpp/chirpp/chipp/generate_report.sh
+    bash generate_report.sh
   else
     sleep 1h
   fi

@@ -182,6 +182,7 @@ io = infer_notes.get_io(notes=inference_notes[(inference_notes["to_summarize"]) 
 inference_notes["io"] = None
 inference_notes["io"][(inference_notes["to_summarize"]) & (inference_notes["intent"] == 10)] = io
 
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings")
 embeddings=infer_notes.get_embeddings(notes=inference_notes,
                                       notes_col=params["inference"]["note_col"],
                                       tasks=params["inference"]["embedding_tasks"])
@@ -194,6 +195,17 @@ params["post_process"]["pos_complaints"] = params["inference"]["pos_complaints"]
 postprocess = PostProcess(preprocessed_notes.raw_notes, inference_notes, params["post_process"])
 postprocess = postprocess.autofill()
 postprocess=postprocess.touchups()
+
+if args.to_excel:
+    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Creating Excel Report")
+    postprocess.create_report(args.outname)
+
+if args.save_embeddings:
+    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Saving note text embeddings")
+    filename=args.outname.replace(".xlsx", "")+"_embeddings.npz"
+    np.savez(filename, classification=embeddings["classification"],
+             separation=embeddings["separation"], matching=embeddings["text-matching"],
+             query=embeddings["retrieval.query"], passage=embeddings["retrieval.passage"])
 
 
 if args.to_database:
@@ -211,19 +223,5 @@ if args.to_database:
     database.import_processed_notes(inference_notes["CSN"].tolist(),
                                     inference_notes[params["inference"]["note_col"]].tolist(),
                                     embeddings)
-
-
-
-if args.to_excel:
-    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Creating Excel Report")
-    postprocess.create_report(args.outname)
-
-if args.save_embeddings:
-    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Saving note text embeddings")
-    filename=args.outname.replace(".xlsx", "")+"_embeddings.npz"
-    np.savez(filename, classification=embeddings["classification"],
-             separation=embeddings["separation"], matching=embeddings["text-matching"],
-             query=embeddings["retrieval.query"], passage=embeddings["retrieval.passage"])
-
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Done!")

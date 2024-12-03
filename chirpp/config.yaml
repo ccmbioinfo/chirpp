@@ -11,7 +11,7 @@ pre_process:
   "physical_exam", "other", "user_index"]
 
   line_col: "LINE"
-  section_rules: "chirpp/preprocess/preprocess_patterns.json"
+  section_rules: "./preprocess/preprocess_patterns.json"
   note_types:
     Note Type: ["ED Provider Notes", "ED Triage Notes"]
   include_cols: ["MRN", "Arrival Date", "Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "LOS"]
@@ -55,12 +55,12 @@ inference:
 
 ## normally there are 8 claasses but partner abuse is non-existent
 #TODO need to add spacy model here and refactor to make it a param
-  classification_model: "chirpp/models/distilbert"
-  summarization_model: "chirpp/models/t5-small"
-  distance_model: "chirpp/models/all-mpnet-base-v2"
-  io_model: "chirpp/models/distilbert_io"
-  intent_model: "chirpp/models/albert_xxl_intent"
-  substance_model: "chirpp/models/albert_xxl_sub"
+  classification_model: "./models/distilbert"
+  summarization_model: "./models/t5-small"
+  distance_model: "./models/all-mpnet-base-v2"
+  io_model: "./models/distilbert_io"
+  intent_model: "./models/albert_xxl_intent"
+  substance_model: "./models/albert_xxl_sub"
   # for some reason the huggingface thing needs to point to the model cannot save it to a folder
   # we are doing the same thing for the spacy model and huggingface will download it and keep in cache in the
   #vm I don't think this is a big deal since we are using the model as is and once downloaded will stay in the vm
