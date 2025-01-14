@@ -73,7 +73,8 @@ class DataBase:
 
         cases = cases[["csn", "injury_date", "injury_hour", "injury_min", "am_pm", "i_o", "location", "area",
                        "place","phac_narrative","w4p", "no1", "no2", 'no3', 'bp1', 'bp2', 'bp3', 'notes', 'sub',
-                       'sub_id', 'sports_code', 'disp','intent','veh', 'veh_p', 'sd1', 'sd2', 'sd3', 'sd4', 'sd5']]
+                       'sub_id', 'sports_code', 'disp','intent','veh', 'veh_p', 'sd1', 'sd2', 'sd3', 'sd4', 'sd5',
+                      'sk_narrative']]
 
         cases.to_sql("chirpp_report", self.engine, if_exists="append", index=False)
 
@@ -164,7 +165,7 @@ class DataBase:
             'arrival_date':'Arrival Date', 'arrival_time':'Arrival Time', 'address':'Address',
             'city':'City', 'province':'Province', 'postal_code':'Postal Code',
             'chief_complaint':'Chief Complaint', 'problem_list':'Problem List', 'los':'LOS',
-            'disposition':'Disposition', 'refferrals':'Referral Order', 'diagnosis':"Diagnosis",
+            'disposition':'Disposition', 'referrals':'Referral Order', 'diagnosis':"Diagnosis",
             'ctas':'CTAS', 'note_type':'Note Type', 'author_type':'Author Type',
             'author_service':'Author Service', 'note_text':'Note Text',
         })
@@ -192,23 +193,23 @@ class DataBase:
         fetchall()
         cases=pd.DataFrame(cases)
         cases["chirpp"]=True
-        
+
         patients=self.session.execute(select(patients_table).\
-                                 where(patients_table.c.mrn.in_(visits["mrn"].to_list()))).fetchall()
+                         where(patients_table.c.mrn.in_(visits["mrn"].to_list()))).fetchall()
         patients=pd.DataFrame(patients)
-        
+
         problems=self.session.execute(select(problems_table).\
-                                 where(problems_table.c.csn.in_(visits["csn"].to_list()))).fetchall()
+                         where(problems_table.c.csn.in_(visits["csn"].to_list()))).fetchall()
         problems=pd.DataFrame(problems)
 
         problems_merged=[]
         problems_grouped=problems.groupby("csn")
         for _, group in problems_grouped:
             problems_merged.append(",".join(group["problem"].to_list()))
-
+        
         new_problems_df=pd.DataFrame({"csn":problems["csn"].drop_duplicates(), "problem_list":problems_merged})
         
-        sheet1, sheet2=utils.prepare_report(visits, patients, cases, new_problems_df)
+        sheet1, sheet2=utils.prepare_report(visits, cases, patients, new_problems_df)
         return sheet1, sheet2
 
     def update_raw(self, txt_file):

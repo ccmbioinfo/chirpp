@@ -66,31 +66,35 @@ def get_sections(notes):
     problems = problems[problems["Problem List"] != " "]
     problems["Problem List"] = problems["Problem List"].str.replace("^ ", "", regex=True)
     problems = problems.rename(columns={"CSN": "csn", "Problem List": "problem"})
+    if "Note ID" in notes.columns:
+        notes_df = notes[["CSN", "Note Type", "Author Type", "Author Service", "Note Text", "LINE", "Note ID"]].drop_duplicates()
+        notes_grouped = notes_df.groupby(["Note ID"])
 
-    notes_df = notes[["CSN", "Note Type", "Author Type", "Author's Service", "Note Text", "LINE", "Note ID"]].drop_duplicates()
-    notes_grouped = notes_df.groupby(["Note ID"])
-    notes_merged = []
-    for _, group in notes_grouped:
-        df = group[["CSN", "Note Type", "Author Type", "Author's Service", ]].drop_duplicates()
-        note_text = " ".join(
-            [str(x) for x in
-             group.sort_values(by=["LINE"], ignore_index=True)["Note Text"].tolist()])
-        df["Note Text"] = note_text
-        notes_merged.append(df)
-    notes_df = pd.concat(notes_merged)
-    notes_df = notes_df.rename(columns={"CSN": "csn", "Note Type": "note_type",
-                                        "Author Type": "author_type",
-                                        "Author's Service": "author_service",
-                                        "Note Text": "note_text", })
+        notes_merged = []
+        for _, group in notes_grouped:
+            df = group[["CSN", "Note Type", "Author Type", "Author Service", ]].drop_duplicates()
+            note_text = " ".join(
+                [str(x) for x in
+                 group.sort_values(by=["LINE"], ignore_index=True)["Note Text"].tolist()])
+            df["Note Text"] = note_text
+            notes_merged.append(df)
+        notes_df = pd.concat(notes_merged)
+        notes_df = notes_df.rename(columns={"CSN": "csn", "Note Type": "note_type",
+                                            "Author Type": "author_type",
+                                            "Author Service": "author_service",
+                                            "Note Text": "note_text", })
+    else:
+        notes_df = notes[
+            ["CSN", "Note Type", "Author Type", "Author Service", "Note Text"]].drop_duplicates()
 
     return patients, visits, referrals, problems, notes_df
 
 
 # TODO  merge this and see what columns we have
 # rename the columns and then copy paste postprocess init
-def prepare_report(visits, cases, patients, problems, header):
+def prepare_report(visits, cases, patients, problems):
 
-    header=["MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "INJ DATE", "Hr", "Min", 
+    header=["MRN", "CSN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "INJ DATE", "Hr", "Min", 
             "AM/PM",  "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", 
             "W4P", "NO1", "BP1", "NO2", "BP2", "NO3", "BP3", 'veh', 'veh p',"Notes", 'LOS', "DISP", 
             "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
@@ -98,10 +102,11 @@ def prepare_report(visits, cases, patients, problems, header):
     
     merged=visits.merge(patients, how="inner", on="mrn")
     merged=merged.merge(cases, how="left", on="csn")
+    merged=merged.merge(problems, how="left", on="csn")
 
     cols_to_keep=[]
     for col in merged.columns:
-        if "vector" in col or "id" in col:
+        if "vector" in col or col=="id":
             continue
         else:
             cols_to_keep.append(col)
@@ -113,7 +118,7 @@ def prepare_report(visits, cases, patients, problems, header):
     
     report_df = pd.DataFrame(columns=header)
     report_df["POSTAL"] = merged["postal_code"].apply(process_postal)
-    report_df["SEX"] = merged["sex"].applut(process_sex)
+    report_df["SEX"] = merged["sex"].apply(process_sex)
     report_df["MRN"] = merged["mrn"]
     report_df["CSN"] = merged["csn"]
     report_df["ScrMRN"] = merged["mrn"].apply(scramble_mrn)
@@ -148,7 +153,7 @@ def prepare_report(visits, cases, patients, problems, header):
     report_df["SPORTS CODE"]=merged["sports_code"]
     report_df["INJ DATE"]=merged["injury_date"]
     report_df["Hr"]=merged["injury_hour"]
-    report_df["Min"]=merged["injury_minute"]
+    report_df["Min"]=merged["injury_min"]
     report_df["AM/PM"]=merged["am_pm"]
     report_df["DISP"]=merged["disp"]
     report_df["LOCATION"]=merged["location"]

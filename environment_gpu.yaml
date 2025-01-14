@@ -5,6 +5,7 @@ channels:
   - defaults
 dependencies:
   - python=3.10
+  - pytorch 
   - pytorch-cuda=12.4
   - cudatoolkit
   - cuda-nvcc
@@ -14,7 +15,7 @@ dependencies:
       - cupy-cuda12x
       - pandas==2.1.0
       - Levenshtein
-      - spacy
+      - spacy==3.5
       - medspacy
       - sentence-transformers
       - transformers==4.30

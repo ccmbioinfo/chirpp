@@ -1,0 +1,9 @@
+pandas
+spacy
+medspacy
+spacy_transformers
+transformers
+torch
+tokenizers
+sentence-transformers
+Levenshtein
