@@ -92,8 +92,8 @@ class DataBase:
         num_notes=len(processed_notes)
         keys=list(embedding_dict.keys())
 
-        csns = select(self.tables["processed_notes"].c.csn)
-        csns = [item[0] for item in self.session.execute(csns).fetchall()]
+        old_csns = select(self.tables["processed_notes"].c.csn)
+        old_csns = [item[0] for item in self.session.execute(old_csns).fetchall()]
         
         
         for key in keys:
@@ -101,7 +101,7 @@ class DataBase:
                 raise ValueError("embedding shape does not match number of notes")
             else:
                 for i in range(num_notes):
-                    if csns[i] not in csns:
+                    if csns[i] not in old_csns:
                         statement = notes_table.insert().values(csn=csns[i],
                                                             note_text=processed_notes[i],
                                                             jina_match_embed=embedding_dict["text-matching"][i, :],
