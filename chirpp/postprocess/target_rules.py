@@ -1,6 +1,63 @@
 from medspacy.ner import TargetRule
 
 #TODO need a way to add to this
+
+safety_devices=[
+    TargetRule(literal="2",
+               category="safety",
+               pattern=[{"LOWER": {"IN":["helmet", "helmeted", "head protection"]}}]),
+
+    TargetRule(literal="3",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["knee pads", "knee pad", "elbow pads", "elbow pad", "padding",
+                                          "pads", "sports pads", "sports pad", "shin pads", "shin pad",
+                                          'shin guards', 'shin gards']}}]),
+    TargetRule(literal="4",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["gloves", "glove", "ski boot", "ski boots", "steel toed boots"]}}]),
+
+    TargetRule(literal="5",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["goggles", "eye protection"]}}]),
+
+    TargetRule(literal="6",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["seatbelt", "seat belt", "belted"]}}]),
+
+    TargetRule(literal="7",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["car seat", "booster seat", "child seat"]}}]),
+
+    TargetRule(literal="8",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["airbag", "airbags"]}}]),
+
+    TargetRule(literal="10",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["life jacket", "life jackets", "life vest", "life vests", "lifevest", "lifejacket"
+                                          "lifevests", "lifejackets"]}}]),
+    TargetRule(literal="11",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["hard hat", "hard hats", "construction hat"]}}]),
+
+    TargetRule(literal="12",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["mouthguard", "mouthguards", "mouth guard", "mouth guards"]}}]),
+
+    # this needs to be age < 3
+    TargetRule(literal="19",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["safety gate", "guardrail", "guardrails", "baby gate",
+                                          "child gate", "childgate", "gate"]}}]),
+TargetRule(literal="ice hockey",
+               category="safety",
+               pattern=[{"LOWER": {"IN": ["ice hockey", "hockey", "rink"],
+                                   "NOT_IN":["field"]}}]),
+
+
+]
+
+
 substances = [
     TargetRule(literal="alcohol",
                category="SUBSTANCE",

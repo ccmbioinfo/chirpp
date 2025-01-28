@@ -14,19 +14,37 @@ class Inference:
 
     def __init__(self, classification_model, summarization_model, classification_labels,
                  intent_model, intent_labels, substance_model, substance_labels, io_model, io_labels,
-                 embedding_model, tasks, device=None):
+                 location_model, location_labels, area_model, area_labels, ampm_model, ampm_labels,
+                 embedding_model, sd_model, sd_labels, tasks, device=None):
         """
-        init method, specify pipeline parameters for classification and summarization
-        :param classification_model: model directory for the trained classification model
-        :param summarization_model: model directory for summarization model
-        :param num_labels: number of labels to infer this has to match the training data
-        :param device: whether to use gpu or cpu, if None will default to whatever gpu torch finds or cpu
+
+        :param classification_model:
+        :param summarization_model:
+        :param classification_labels:
+        :param intent_model:
+        :param intent_labels:
+        :param substance_model:
+        :param substance_labels:
+        :param io_model:
+        :param io_labels:
+        :param location_model:
+        :param location_labels:
+        :param area_model:
+        :param area_labels:
+        :param ampm_model:
+        :param ampm_labels:
+        :param embedding_model:
+        :param sd_model:
+        :param sd_labels:
+        :param tasks:
+        :param device:
         """
         if device is None:
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         if classification_model is not None:
-            model = AutoModelForSequenceClassification.from_pretrained(classification_model, num_labels=classification_labels)
+            model = AutoModelForSequenceClassification.from_pretrained(classification_model,
+                                                                       num_labels=classification_labels)
             tokenizer = AutoTokenizer.from_pretrained(classification_model, padding="max_length")
             self.clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
         else:
@@ -64,9 +82,37 @@ class Inference:
         else:
             raise NoModelError("There is no inside outside model")
 
+        if location_model is not None:
+            model = AutoModelForSequenceClassification.from_pretrained(location_model,
+                                                                       num_labels=location_labels)
+            tokenizer = AutoTokenizer.from_pretrained(location_model, padding="max_length")
+            self.location_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
+        else:
+            raise NoModelError("There is no location model")
+
+        if area_model is not None:
+            model = AutoModelForSequenceClassification.from_pretrained(area_model, num_labels=area_labels)
+            tokenizer = AutoTokenizer.from_pretrained(area_model, padding="max_length")
+            self.area_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
+        else:
+            raise NoModelError("There is no area model")
+
+        if ampm_model is not None:
+            model = AutoModelForSequenceClassification.from_pretrained(ampm_model, num_labels=ampm_labels)
+            tokenizer = AutoTokenizer.from_pretrained(ampm_model, padding="max_length")
+            self.ampm_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
+        else:
+            raise NoModelError("There is no ampm model")
+
+        if sd_model is not None:
+            model=AutoModelForSequenceClassification.from_pretrained(sd_model, num_labels=sd_labels)
+            tokenizer=AutoTokenizer.from_pretrained(sd_model, padding="max_length")
+            self.sd_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
+
         # for some reason this needs to be in the huggingface cache but not in a folder
         if embedding_model is not None:
             self.embedding_model = AutoModel.from_pretrained(embedding_model, trust_remote_code=True).to(device)
+            self.tasks=tasks
 
     def classify(self, notes, note_col="Note Text", include_labels=False):
         """
@@ -154,21 +200,21 @@ class Inference:
         :param cutoff: the model confidence cutoff, anything below that will be left blank
         :return: labels for intent in a list
         """
-        to_infer=notes[notes_col].to_list()
+        to_infer = notes[notes_col].to_list()
         labels = self.intent_clf(to_infer, padding=True, truncation=True)
 
         edited_labels = []
         for lab in labels:
             edited = lab["label"]
             edited = edited.replace("LABEL_", "")
-            actual= label_dict[edited]
+            actual = label_dict[edited]
             edited_labels.append(int(actual))
 
         scores = []
         for lab in labels:
             scores.append(lab["score"])
 
-        results=[]
+        results = []
         for lab, scr in zip(edited_labels, scores):
             if scr >= cutoff:
                 results.append(lab)
@@ -176,7 +222,6 @@ class Inference:
                 results.append(None)
 
         return results
-
 
     def get_substance(self, notes, notes_col, cutoff=0.9):
         """
@@ -224,7 +269,7 @@ class Inference:
         for lab in labels:
             edited = lab["label"]
             edited = edited.replace("LABEL_", "")
-            edited = int(edited)+1
+            edited = int(edited) + 1
             edited_labels.append(edited)
 
         scores = []
@@ -240,6 +285,99 @@ class Inference:
 
         return results
 
+    def get_ampm(self, notes, notes_col, cutoff=0.9):
+        to_infer = notes[notes_col].to_list()
+        labels = self.ampm_clf(to_infer, padding=True, truncation=True)
+        edited_labels = []
+        for lab in labels:
+            edited = lab["label"]
+            edited = edited.replace("LABEL_", "")
+            edited = int(edited) + 1
+            edited_labels.append(edited)
+
+        scores = []
+        for lab in labels:
+            scores.append(lab["score"])
+
+        results = []
+        for lab, scr in zip(edited_labels, scores):
+            if scr >= cutoff:
+                results.append(lab)
+            else:
+                results.append(None)
+
+        return results
+
+    def get_location(self, notes, notes_col, label_dict, cutoff=0.85):
+        to_infer = notes[notes_col].to_list()
+        labels = self.location_clf(to_infer, padding=True, truncation=True)
+
+        edited_labels = []
+        for lab in labels:
+            edited = lab["label"]
+            edited = edited.replace("LABEL_", "")
+            actual = label_dict[edited]
+            edited_labels.append(int(actual))
+
+        scores = []
+        for lab in labels:
+            scores.append(lab["score"])
+
+        results = []
+        for lab, scr in zip(edited_labels, scores):
+            if scr >= cutoff and lab != '0':
+                results.append(lab)
+            else:
+                results.append(None)
+
+        return results
+
+    def get_area(self, notes, notes_col, label_dict, cutoff=0.85):
+        to_infer = notes[notes_col].to_list()
+        labels = self.area_clf(to_infer, padding=True, truncation=True)
+
+        edited_labels = []
+        for lab in labels:
+            edited = lab["label"]
+            edited = edited.replace("LABEL_", "")
+            actual = label_dict[edited]
+            edited_labels.append(int(actual))
+
+        scores = []
+        for lab in labels:
+            scores.append(lab["score"])
+
+        results = []
+        for lab, scr in zip(edited_labels, scores):
+            if scr >= cutoff and lab != '0':
+                results.append(lab)
+            else:
+                results.append(None)
+
+        return results
+
+    #TODO get is sd
+    def get_sd(self, notes, notes_col, cutoff=0.9):
+        to_infer = notes[notes_col].to_list()
+        labels = self.area_clf(to_infer, padding=True, truncation=True)
+
+        edited_labels = []
+        for lab in labels:
+            edited = lab["label"]
+            edited = edited.replace("LABEL_", "")
+            edited_labels.append(edited)
+
+        scores = []
+        for lab in labels:
+            scores.append(lab["score"])
+
+        results=[]
+        for lab, scr in zip(edited_labels, scores):
+            if scr >= cutoff and lab != '0':
+                results.append(lab)
+            else:
+                results.append(None)
+
     def get_embeddings(self, notes, notes_col, tasks):
         """
         calculate embeddings for the cleaned up note texts this will be part of the full text search and outlier
@@ -250,11 +388,10 @@ class Inference:
         """
 
         if tasks is None:
-            embeddings=self.embedding_model.encode(notes[notes_col].to_list())
+            embeddings = self.embedding_model.encode(notes[notes_col].to_list())
             return embeddings
         else:
-            embed_dict={}
-            for task in tasks:
-                embed_dict[task]=self.embedding_model.encode(notes[notes_col].to_list(), task=task)
+            embed_dict = {}
+            for task in self.tasks:
+                embed_dict[task] = self.embedding_model.encode(notes[notes_col].to_list(), task=task)
             return embed_dict
-

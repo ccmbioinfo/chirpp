@@ -2,6 +2,7 @@
 import spacy_transformers
 import pandas as pd
 from chirpp.postprocess.utils import *
+from chirpp.database.utils import calculate_age
 
 #TODO this needs to be refactored to utils so I can use it on database prepare report
 class PostProcess:
@@ -19,7 +20,7 @@ class PostProcess:
         raw_notes["Arrival Date"] = pd.to_datetime(raw_notes["Arrival Date"])
         inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"])
         inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
-        inference_notes = inference_notes[['CSN',  'probs', 'to_summarize', 'PHAC Narrative',
+        inference_notes = inference_notes[['CSN',  'probs', 'is_chirpp', 'PHAC Narrative',
                                            'pre_processed', 'io', 'intent', 'sub']]
         merged = raw_notes.merge(inference_notes, how="inner", on=["CSN"])
         merged["Arrival Time"] = pd.to_datetime(merged["Arrival Time"].astype(str))
@@ -37,6 +38,7 @@ class PostProcess:
             group_df["ScrMRN"] = data["MRN"].apply(scramble_mrn).drop_duplicates()
             group_df["DOB"] = pd.to_datetime(data["Date of Birth"]).apply(
                 lambda x: x.strftime('%Y-%m-%d')).drop_duplicates()
+            group_df["AGE"] =group_df.apply(lambda x: calculate_age(group_df["Arrival Date"], group_df["Date of Birth"]), axis=1)
             group_df["ER Date"] = pd.to_datetime(data["Arrival Date"]).dt.strftime('%Y-%m-%d').drop_duplicates()
             group_df["ER Time"] = data["Arrival Time"].apply(lambda x: x.strftime('%H:%M')).drop_duplicates()
             group_df["CTAS"] = data["CTAS"].apply(process_ctas).drop_duplicates()
@@ -47,11 +49,15 @@ class PostProcess:
             group_df["Diagnosis"] = data["Diagnosis"].drop_duplicates()
             group_df["probs"] = data["probs"].drop_duplicates()
             group_df["Problem List"] = data["Problem List"].drop_duplicates()
-            group_df["to_summarize"] = data["to_summarize"].drop_duplicates()
+            group_df["is_chirpp"] = data["is_chirpp"].drop_duplicates()
             group_df["PHAC Narrative"] = data["PHAC Narrative"].drop_duplicates()
             group_df["I/O"] = data["io"].drop_duplicates()
             group_df["IN"] = data["intent"]
             group_df["sub"] = data["sub"]
+            group_df["area"]=data["area"]
+            group_df["location"]=data["location"]
+            group_df["ampm"]=data["ampm"]
+            group_df["has_sd"]=data["has_sd"]
 
             for_narrative = data[data["Note Type"].isin(self.params["note_types"])]
             for_narrative["Note Type"] = pd.Categorical(for_narrative["Note Type"],
@@ -71,10 +77,10 @@ class PostProcess:
 
         self.template = template
 
-        self.sheet1 = self.template[~self.template["to_summarize"]]
-        self.sheet2 = self.template[self.template["to_summarize"]]
+        self.sheet1 = self.template[~self.template["is_chirpp"]]
+        self.sheet2 = self.template[self.template["is_chirpp"]]
 
-    # TODO sd1-5, area, location, place, Inj date, Inj time, sports code
+    # TODO sd1-5, place, Inj date, Inj time, sports code
     def autofill(self):
         """
         autofills couple of columns using the functions from utils,
@@ -87,15 +93,23 @@ class PostProcess:
         merged_notes = self.sheet2["Notes"].to_list()
         dispositions = self.sheet2["Disposition"].to_list()
         has_substance = self.sheet2["sub"].to_list()
+        has_device=self.sheet2["has_sd"].to_list()
 
         autofill_cols = {
             "subID": [],
             "NO1": [],
             "BP1": [],
             "DISP": [],
+            "sd1": [],
+            "sd2": [],
+            "sd3": [],
+            "sd4": [],
+            "sd5": [],
         }
-        for complaint, note, merged, diag, disp, has_sub in zip(complaints, notes, merged_notes, diags,
-                                                                dispositions, has_substance):
+        safety_cols = ["sd1", "sd2", "sd3", "sd4", "sd5"]
+
+        for complaint, note, merged, diag, disp, has_sub, has_sd in zip(complaints, notes, merged_notes, diags,
+                                                                dispositions, has_substance, has_device):
             diag = str(diag).lower()
             if complaint == "Medical Device Problem":
                 no1 = 99
@@ -103,7 +117,14 @@ class PostProcess:
             else:
                 no1, bp1 = injuries(diag)
             report_disposition = get_disposition(merged, disp, no1, bp1, complaint)
-            subid = get_substances(note, has_substance)
+            subid = get_substances(note, has_sub)
+            devices=get_devices(complaint, has_sd)
+            if len(devices) > 0:
+                for i in range(len(devices)):
+                    if i > 4:
+                        break
+                    else:
+                        autofill_cols[safety_cols[i]].append(devices[i])
 
             autofill_cols["NO1"].append(no1)
             autofill_cols["BP1"].append(bp1)
@@ -113,22 +134,6 @@ class PostProcess:
         for key in autofill_cols.keys():
             self.sheet2[key] = autofill_cols[key]
 
-        return self
-
-    # touchups and writign to file are being separated because normally we will be pushing all this stuff to the
-    # database and once in a blue moon we will get a report back
-    def touchups(self):
-        """
-        some manual tweakign of the columns based on feedback hopefully will not be needed soon
-        :return:
-        """
-        self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "to_summarize", "probs"])
-        self.sheet1 = self.sheet1.drop(columns=["pre_processed", "Disposition", "to_summarize", "probs"])
-
-        self.sheet2["sd1"] = -1
-        self.sheet2["SPORTS CODE"] = 4
-        self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["NO2"] = 42
-        self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["BP2"] = 135
         return self
 
     def create_report(self, path, overwrite=False):
@@ -141,6 +146,10 @@ class PostProcess:
         if os.path.exists(path) and not overwrite:
             raise FileExistsError("{} already exisits".format(path))
 
+        self.sheet1 = self.sheet1.drop(columns=["pre_processed", "Disposition", "is_chirpp", "probs", "has_sd"])
+        self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "is_chirpp", "probs", "has_sd"])
+
+        self.sheet2=touchups(self.sheet2)
 
         with pd.ExcelWriter(path) as out:
             self.sheet1.to_excel(out, sheet_name="Sheet 1", index=False)

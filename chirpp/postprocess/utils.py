@@ -20,6 +20,7 @@ target = med_nlp.add_pipe("medspacy_target_matcher")
 context = ConText(med_nlp, rules=os.path.join(os.path.dirname(__file__), 'context_rules.json'))
 context.add(context_rules)
 target.add(substances)
+target.add(safety_devices)
 
 
 class MissingDataError(Exception):
@@ -350,7 +351,7 @@ def injuries(dx):
         bp = 135
     elif ("intracranial" in dx) or (
             "brain" in dx and ("tumor" not in dx and "tumour" not in dx and "cancer" not in dx)) or (
-            "subarachnoid" in dx) or ("subdural" in dx and "hematoma" in dx) or (
+            "subarachnoid" in dx) or ("subdural" in dx and "hematoma" in dx) or("epidural" in dx) or (
             ("intraventricular" in dx) and ("haemorrhage" in dx or "hemorrhage" in dx)):
         no = 43
         bp = 135
@@ -403,7 +404,7 @@ def injuries(dx):
     return no, bp
 
 
-# TODO change this into inference
+# TODO this neeeds to check for category
 def get_substances(clean_text, has_substance, nlp=med_nlp):
     """
     finds the substances that are mentioned in the text, this may or may not (usually is) the substance that has caused
@@ -414,17 +415,42 @@ def get_substances(clean_text, has_substance, nlp=med_nlp):
     of the incident, still working on that.
     """
 
-    if has_substance == 1:
+    if has_substance in [1, "1"]:
         doc = nlp(str(clean_text))
         if len(doc.ents) > 0:
-            substance = ",".join(list(set([str(ent).lower() for ent in doc.ents])))
+            substance=[]
+            for ent in doc.ents:
+                if ent.label_ == "SUBSTANCE":
+                    substance.append(ent.text)
+                else:
+                    continue
         else:
             substance = None
     else:
-        substance = "."
+        substance = None
+
+    if substance is not None and len(substance) > 0:
+        substance=",".join(substance)
 
     return substance
 
+def get_devices(clean_text, is_sd, nlp):
+    doc=nlp(str(clean_text))
+    if is_sd==1:
+        if len(doc.ents) > 0:
+            devices=[]
+            for ent in doc.ents:
+                if ent.label_ == "safety":
+                    if ent._.target_rule.literal !="ice_hockey":
+                        devices.append(ent._.target_rule.literal)
+                    else:
+                        devices=devices+["2", "3", "4", "5"]
+        else:
+            devices="-1"
+    else:
+        devices = "-1"
+
+    return devices
 
 def get_disposition(merged_notes, disposition, no1, bp1, complaint):
     """
@@ -467,6 +493,17 @@ def touchups(data):
     data["I/O"][data["PHAC Narrative"].str.contains("bathroom")] = 1
     data["DISP"][data["Diagnosis"].str.lower() == "pulled elbow"] = 3
     data["IN"][data["NO1"]==71]=16
+
+    #manual touchups of other requests
+    data["sd1"] = -1
+    data["SPORTS CODE"] = 4
+    data[(data["NO1"] == 12) & (data["BP1"] == 110)]["NO2"] = 41
+    data[(data["NO1"] == 12) & (data["BP1"] == 110)]["BP2"] = 135
+    data[data["DISP"] == 1]["BP1"] = 999
+    data[data["DISP"] == 1]["NO1"] = 99
+    data[data["NO1"] == 71]["IN"] = 16
+    data[data["diagnosis"].str.lower().str.contain("monteggia")]["NO2"]=13
+    data[data["diagnosis"].str.lower().str.contain("monteggia")]["BP2"] = 430
 
     return data
 
