@@ -10,7 +10,7 @@ context_rules = [
                          {'LOWER': {'IN': ["not"]}},
                          {'LOWER': {'IN': ['appear', 'exihibit', 'demonstrate'
                                                                  'feel', 'reveal']}},
-                         {"OP": "?"}], direction='FORWARD', max_scope=1),
+                         {"OP": "?"}], direction='FORWARD', max_scope=3),
     ConTextRule("DETECTED", category="POSSIBLE_EXISTENCE",
                 direction="BACKWARD",
                 max_scope=1),

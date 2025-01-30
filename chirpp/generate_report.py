@@ -90,7 +90,7 @@ inference_notes = inference_notes[~pd.isnull(inference_notes[params["inference"]
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Collecting inference models")
 # set up inference instance
-infer_notes = Inference(classification_model=os.path.abspath(params["inference"]["classification_model"]),
+inference = Inference(classification_model=os.path.abspath(params["inference"]["classification_model"]),
                         summarization_model=os.path.abspath(params["inference"]["summarization_model"]),
                         classification_labels=params["inference"]["classification_labels"],
                         intent_model=os.path.abspath(params["inference"]["intent_model"]),
@@ -114,7 +114,7 @@ infer_notes = Inference(classification_model=os.path.abspath(params["inference"]
 # get model probabilities
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying")
 
-probs = infer_notes.classify(inference_notes,
+probs = inference.classify(inference_notes,
                              params["inference"]["note_col"],
                              params["inference"]["include_labels"])
 
@@ -147,7 +147,7 @@ inference_notes["is_chirpp"] = inference_notes["probs"] >= prob_cutoff
 # get summaries of positive cases
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing")
 
-summaries = infer_notes.summarize(inference_notes,
+summaries = inference.summarize(inference_notes,
                                   params["inference"]["note_col"],
                                   params["inference"]["truncation"],
                                   params["inference"]["max_length"])
@@ -165,7 +165,7 @@ inference_notes["PHAC Narrative"] = summaries
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying intent")
 
-intent = infer_notes.get_intent(notes=inference_notes[inference_notes["is_chirpp"]],
+intent = inference.get_intent(notes=inference_notes[inference_notes["is_chirpp"]],
                                 notes_col=params["inference"]["note_col"],
                                 label_dict=params["inference"]["intent_label_dict"],
                                 cutoff=params["inference"]["intent_cutoff"],
@@ -176,7 +176,7 @@ inference_notes["intent"][inference_notes["is_chirpp"]] = intent
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying substance use")
 
-substance = infer_notes.get_substance(notes=inference_notes[inference_notes["is_chirpp"]],
+substance = inference.get_substance(notes=inference_notes[inference_notes["is_chirpp"]],
                                       notes_col=params["inference"]["note_col"],
                                       cutoff=params["inference"]["subs_cutoff"])
 inference_notes["sub"] = None
@@ -184,17 +184,10 @@ inference_notes["sub"][inference_notes["is_chirpp"]] = substance
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying inside/outside")
 
-io = infer_notes.get_io(notes=inference_notes[(inference_notes["is_chirpp"]) & (inference_notes["intent"] == 10)],
-                        notes_col=params["inference"]["note_col"],
-                        cutoff=params["inference"]["io_cutoff"])
-
-inference_notes["io"] = None
-inference_notes["io"][(inference_notes["is_chirpp"]) & (inference_notes["intent"] == 10)] = io
-
 #TODO add location, area, ampm
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying am/pm")
 
-ampm=infer_notes.get_ampm(notes=inference_notes[inference_notes["is_chirpp"]],
+ampm=inference.get_ampm(notes=inference_notes[inference_notes["is_chirpp"]],
                           notes_col=params["inference"]["note_col"],
                           cutoff=params["inference"]["am_pm_cutoff"])
 
@@ -203,7 +196,7 @@ inference_notes["ampm"][(inference_notes["is_chirpp"])] = ampm
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying Location")
 
-location=inference_notes.get_location(notes=inference_notes[inference_notes["is_chirpp"]],
+location=inference.get_location(notes=inference_notes[inference_notes["is_chirpp"]],
                                       notes_col=params["inference"]["note_col"],
                                       cutoff=params["inference"]["location_cutoff"],
                                      label_dict=params["inference"]["location_label_dict"])
@@ -213,7 +206,7 @@ inference_notes["location"][inference_notes["is_chirpp"]] = location
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying Area")
 
-area=inference_notes.get_area(notes=inference_notes[inference_notes["is_chirpp"]],
+area=inference.get_area(notes=inference_notes[inference_notes["is_chirpp"]],
                               notes_col=params["inference"]["note_col"],
                               cutoff=params["inference"]["area_cutoff"],
                               label_dict=params["inference"]["area_label_dict"])
@@ -222,7 +215,7 @@ inference_notes["area"][inference_notes["is_chirpp"]] = area
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying if Sds are used")
 
-has_sd=inference_notes.get_sd(notes=inference_notes[inference_notes["is_chirpp"]],
+has_sd=inference.get_sd(notes=inference_notes[inference_notes["is_chirpp"]],
                               notes_col=params["inference"]["note_col"],
                               cutoff=params["inference"]["sd_cutoff"])
 inference_notes["has_sd"]=None
@@ -230,7 +223,7 @@ inference_notes["has_sd"][inference_notes["is_chirpp"]] = has_sd
 
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings")
-embeddings=infer_notes.get_embeddings(notes=inference_notes,
+embeddings=inference.get_embeddings(notes=inference_notes,
                                       notes_col=params["inference"]["note_col"],
                                       tasks=params["inference"]["embedding_tasks"])
 

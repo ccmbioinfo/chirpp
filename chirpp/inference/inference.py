@@ -378,6 +378,8 @@ class Inference:
             else:
                 results.append(None)
 
+        return list(set(results))
+
     def get_embeddings(self, notes, notes_col, tasks):
         """
         calculate embeddings for the cleaned up note texts this will be part of the full text search and outlier

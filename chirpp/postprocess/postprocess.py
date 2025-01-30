@@ -38,7 +38,7 @@ class PostProcess:
             group_df["ScrMRN"] = data["MRN"].apply(scramble_mrn).drop_duplicates()
             group_df["DOB"] = pd.to_datetime(data["Date of Birth"]).apply(
                 lambda x: x.strftime('%Y-%m-%d')).drop_duplicates()
-            group_df["AGE"] =group_df.apply(lambda x: calculate_age(group_df["Arrival Date"], group_df["Date of Birth"]), axis=1)
+            group_df["AGE"] =data.apply(lambda x: calculate_age(data["Arrival Date"], data["Date of Birth"]), axis=1)
             group_df["ER Date"] = pd.to_datetime(data["Arrival Date"]).dt.strftime('%Y-%m-%d').drop_duplicates()
             group_df["ER Time"] = data["Arrival Time"].apply(lambda x: x.strftime('%H:%M')).drop_duplicates()
             group_df["CTAS"] = data["CTAS"].apply(process_ctas).drop_duplicates()

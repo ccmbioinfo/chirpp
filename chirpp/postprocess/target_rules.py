@@ -1,32 +1,31 @@
 from medspacy.ner import TargetRule
 
-#TODO need a way to add to this
-
 safety_devices=[
     TargetRule(literal="2",
                category="safety",
-               pattern=[{"LOWER": {"IN":["helmet", "helmeted", "head protection"]}}]),
+               pattern=[{"LOWER": {"IN":["helmet", "helmeted"]}}]),
 
     TargetRule(literal="3",
                category="safety",
-               pattern=[{"LOWER": {"IN": ["knee pads", "knee pad", "elbow pads", "elbow pad", "padding",
-                                          "pads", "sports pads", "sports pad", "shin pads", "shin pad",
-                                          'shin guards', 'shin gards']}}]),
+               pattern=[{"LOWER": {"IN": ["knee", "elbow", "sports", "shin"]}}, 
+                        {"LOWER": {"IN": ["pad", 'pads', 'gard', 'guard', 'padding']}}]),
     TargetRule(literal="4",
                category="safety",
-               pattern=[{"LOWER": {"IN": ["gloves", "glove", "ski boot", "ski boots", "steel toed boots"]}}]),
+               pattern=[{"LOWER": {"IN": ["gloves", "glove", "boot", "boots"]}}]),
 
     TargetRule(literal="5",
                category="safety",
-               pattern=[{"LOWER": {"IN": ["goggles", "eye protection"]}}]),
+               pattern=[{"LOWER": {"IN": ["goggles", "visor"]}}]),
 
     TargetRule(literal="6",
                category="safety",
-               pattern=[{"LOWER": {"IN": ["seatbelt", "seat belt", "belted"]}}]),
+               pattern=[{"LOWER": {"IN": ["seat", "safety"]}}, 
+                        {"LOWER": {"IN": ["belt", "belted", "fastened"]}}]),
 
     TargetRule(literal="7",
                category="safety",
-               pattern=[{"LOWER": {"IN": ["car seat", "booster seat", "child seat"]}}]),
+               pattern=[{"LOWER": {"IN": ["booster", "car", "child"]}}, 
+                        {"LOWER": {"IN": ["seat", "seated"]}}]),
 
     TargetRule(literal="8",
                category="safety",
@@ -34,42 +33,44 @@ safety_devices=[
 
     TargetRule(literal="10",
                category="safety",
-               pattern=[{"LOWER": {"IN": ["life jacket", "life jackets", "life vest", "life vests", "lifevest", "lifejacket"
-                                          "lifevests", "lifejackets"]}}]),
+               pattern=[{"LOWER": "life", "OP":"?"},
+                        {"LOWER" : {"IN": ["vest", "jacket"]}}]),
     TargetRule(literal="11",
                category="safety",
-               pattern=[{"LOWER": {"IN": ["hard hat", "hard hats", "construction hat"]}}]),
+               pattern=[{"LOWER": {"IN": ["hard", "construction"]}}, 
+                        {"LOWER": {"IN": ["hat", "helmet"]}}]),
 
     TargetRule(literal="12",
                category="safety",
-               pattern=[{"LOWER": {"IN": ["mouthguard", "mouthguards", "mouth guard", "mouth guards"]}}]),
+               pattern=[{"LOWER":"mouth", "OP":"?"},
+                        {"LOWER": {"IN": ["guard", "guards"]}}]),
 
     # this needs to be age < 3
     TargetRule(literal="19",
                category="safety",
-               pattern=[{"LOWER": {"IN": ["safety gate", "guardrail", "guardrails", "baby gate",
-                                          "child gate", "childgate", "gate"]}}]),
+               pattern=[{"LOWER": {"IN": ["safety", "guard", "baby", "child"]}, "OP":"?"}, 
+                        {"LOWER": {"IN": ["gate", "rail"]}}]),
+                                          
 TargetRule(literal="ice hockey",
                category="safety",
-               pattern=[{"LOWER": {"IN": ["ice hockey", "hockey", "rink"],
+               pattern=[{"LOWER": {"IN": ["icehockey", "hockey", "rink"],
                                    "NOT_IN":["field"]}}]),
-
-
 ]
 
 
+# TODO aggregate single word ones into a single in
+# TODO get multi word ones into individual target rules
 substances = [
     TargetRule(literal="alcohol",
                category="SUBSTANCE",
-               pattern=[{"LOWER": {"IN": ["alchohol", "etoh", "vodka", "rum", "beer", "tequila", "drunk", "wine"
-                                                                                                          "passed out"]}}]),
+               pattern=[{"LOWER": {"IN": ["alchohol", "etoh", "vodka", "rum", "beer", "tequila", "drunk", "wine"]}}]),
     TargetRule(literal="rec drugs",
                category="SUBSTANCE",
                pattern=[{"LOWER": {
                    "IN": ['cannabinoid', 'cannabinoids', 'cannabis', 'cbd', 'cocaine', 'crack cocaine', 'crack',
                           'downers', 'ecstasy', 'edible', 'edibles', 'got high', 'heroin', 'heroine', 'lsd', 'mdma',
                           'meth', 'methamphetamine', 'molly', 'morphine', 'mushroom', 'mushrooms', 'n-bomb', 'opioid',
-                          'poppers', 'poppers', 'pot', 'psilocybin', 'recreational drugs', 'shrooms',
+                          'poppers', 'poppers', 'pot', 'psilocybin', 'shrooms',
                           'stoner patch',
                           'street drugs', 'tetrahydrocannabinol', 'thc choclate', 'thc gummies', 'thc', 'uppers',
                           'weed', ]}}]),
@@ -110,7 +111,7 @@ substances = [
 
     TargetRule(literal="pres drugs",
                category="SUBSTANCE",
-               pattern=[{"LOWER": {"IN": ["adderall", "adhd medication", "alprazolam", "alysena", "amitriptyline",
+               pattern=[{"LOWER": {"IN": ["adderall", "medication", "alprazolam", "alysena", "amitriptyline",
                                           "amlodipine", "amoxicillin", "amphetamine", "antidepressant", "aripiprazole",
                                           "atenolol", "ativan", "atomoxetine", "azilsartan", "baclofen", "benzocaine",
                                           "benzodiazepines", "benzos", "biphentin", "bisoprolol",
@@ -120,7 +121,7 @@ substances = [
                                           "cetirizine", "chlorpheniramine", "cipralex", "citalopram", "clavulin",
                                           "clobazam",
                                           "clonazepam", "clonidine", "clopidogrel", "codeine", "colchicine", "concerta",
-                                          "crestor", "crystal meth", "cyclobenzaprine", "dexamethasone",
+                                          "crestor", "cyclobenzaprine", "dexamethasone",
                                           "dextromethorphan",
                                           "diazepam", "dilaudid", "diphenhydramine", "domperidone", "duloxetine",
                                           "effexor",

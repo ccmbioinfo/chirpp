@@ -13,7 +13,7 @@ from chirpp.postprocess.target_rules import *
 if not spacy.util.is_package("en_core_web_trf"):
     subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_trf"])
 
-parse_nlp = spacy.load('en_core_web_trf', disable=["ner"])
+med_nlp = spacy.load('en_core_web_trf', disable=["ner"])
 med_nlp = medspacy.load(medspacy_enable=['medspacy_sectionizer'])
 target = med_nlp.add_pipe("medspacy_target_matcher")
 
@@ -404,7 +404,6 @@ def injuries(dx):
     return no, bp
 
 
-# TODO this neeeds to check for category
 def get_substances(clean_text, has_substance, nlp=med_nlp):
     """
     finds the substances that are mentioned in the text, this may or may not (usually is) the substance that has caused
@@ -417,10 +416,11 @@ def get_substances(clean_text, has_substance, nlp=med_nlp):
 
     if has_substance in [1, "1"]:
         doc = nlp(str(clean_text))
+        doc=context(doc)
         if len(doc.ents) > 0:
             substance=[]
             for ent in doc.ents:
-                if ent.label_ == "SUBSTANCE":
+                if ent.label_ == "SUBSTANCE" and not ent._.context_attributes["is_negated"]:
                     substance.append(ent.text)
                 else:
                     continue
@@ -430,18 +430,20 @@ def get_substances(clean_text, has_substance, nlp=med_nlp):
         substance = None
 
     if substance is not None and len(substance) > 0:
-        substance=",".join(substance)
+        substance=",".join(list(set(substance)))
 
     return substance
 
+
 def get_devices(clean_text, is_sd, nlp):
     doc=nlp(str(clean_text))
-    if is_sd==1:
+    doc=context(doc)
+    if is_sd=="1":
         if len(doc.ents) > 0:
             devices=[]
             for ent in doc.ents:
-                if ent.label_ == "safety":
-                    if ent._.target_rule.literal !="ice_hockey":
+                if ent.label_ == "safety" and not ent._.context_attributes["is_negated"]:
+                    if ent._.target_rule.literal !="ice hockey":
                         devices.append(ent._.target_rule.literal)
                     else:
                         devices=devices+["2", "3", "4", "5"]
