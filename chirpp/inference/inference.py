@@ -15,7 +15,7 @@ class Inference:
     def __init__(self, classification_model, summarization_model, classification_labels,
                  intent_model, intent_labels, substance_model, substance_labels, io_model, io_labels,
                  location_model, location_labels, area_model, area_labels, ampm_model, ampm_labels,
-                 embedding_model, sd_model, sd_labels, tasks, device=None):
+                 embedding_model, tasks, device=None):
         """
 
         :param classification_model:
@@ -103,11 +103,6 @@ class Inference:
             self.ampm_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
         else:
             raise NoModelError("There is no ampm model")
-
-        if sd_model is not None:
-            model=AutoModelForSequenceClassification.from_pretrained(sd_model, num_labels=sd_labels)
-            tokenizer=AutoTokenizer.from_pretrained(sd_model, padding="max_length")
-            self.sd_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
 
         # for some reason this needs to be in the huggingface cache but not in a folder
         if embedding_model is not None:
@@ -286,6 +281,13 @@ class Inference:
         return results
 
     def get_ampm(self, notes, notes_col, cutoff=0.9):
+        """
+        
+        :param notes:
+        :param notes_col:
+        :param cutoff:
+        :return:
+        """
         to_infer = notes[notes_col].to_list()
         labels = self.ampm_clf(to_infer, padding=True, truncation=True)
         edited_labels = []
@@ -309,6 +311,14 @@ class Inference:
         return results
 
     def get_location(self, notes, notes_col, label_dict, cutoff=0.85):
+        """
+
+        :param notes:
+        :param notes_col:
+        :param label_dict:
+        :param cutoff:
+        :return:
+        """
         to_infer = notes[notes_col].to_list()
         labels = self.location_clf(to_infer, padding=True, truncation=True)
 
@@ -333,6 +343,14 @@ class Inference:
         return results
 
     def get_area(self, notes, notes_col, label_dict, cutoff=0.85):
+        """
+
+        :param notes:
+        :param notes_col:
+        :param label_dict:
+        :param cutoff:
+        :return:
+        """
         to_infer = notes[notes_col].to_list()
         labels = self.area_clf(to_infer, padding=True, truncation=True)
 
@@ -356,30 +374,6 @@ class Inference:
 
         return results
 
-    #TODO get is sd
-    def get_sd(self, notes, notes_col, cutoff=0.9):
-        to_infer = notes[notes_col].to_list()
-        labels = self.area_clf(to_infer, padding=True, truncation=True)
-
-        edited_labels = []
-        for lab in labels:
-            edited = lab["label"]
-            edited = edited.replace("LABEL_", "")
-            edited_labels.append(edited)
-
-        scores = []
-        for lab in labels:
-            scores.append(lab["score"])
-
-        results=[]
-        for lab, scr in zip(edited_labels, scores):
-            if scr >= cutoff and lab != '0':
-                results.append(lab)
-            else:
-                results.append(None)
-
-        return list(set(results))
-
     def get_embeddings(self, notes, notes_col, tasks):
         """
         calculate embeddings for the cleaned up note texts this will be part of the full text search and outlier
@@ -388,7 +382,6 @@ class Inference:
         :param tasks: list of tasks to be passed to the model, if None just plain embeddings will be returned
         :return: a dictionary of embeddings where key is the task and the value is the embedding
         """
-
         if tasks is None:
             embeddings = self.embedding_model.encode(notes[notes_col].to_list())
             return embeddings

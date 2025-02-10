@@ -397,9 +397,9 @@ def injuries(dx):
     elif ("injury" in dx or "trauma" in dx):
         bp = body_parts(dx)
 
-    if ("tibia" in dx and "fibula" in dx):
-        no = natureOfInjury
-        bp = body_parts(dx)
+    #if ("tibia" in dx and "fibula" in dx):
+    #    no = natureOfInjury
+    #    bp = body_parts(dx)
 
     return no, bp
 
@@ -416,7 +416,7 @@ def get_substances(clean_text, has_substance, nlp=med_nlp):
 
     if has_substance in [1, "1"]:
         doc = nlp(str(clean_text))
-        doc=context(doc)
+        #doc=context(doc)
         if len(doc.ents) > 0:
             substance=[]
             for ent in doc.ents:
@@ -435,24 +435,22 @@ def get_substances(clean_text, has_substance, nlp=med_nlp):
     return substance
 
 
-def get_devices(clean_text, is_sd, nlp):
+def get_devices(clean_text, is_sd, nlp=med_nlp):
     doc=nlp(str(clean_text))
-    doc=context(doc)
-    if is_sd=="1":
-        if len(doc.ents) > 0:
-            devices=[]
-            for ent in doc.ents:
-                if ent.label_ == "safety" and not ent._.context_attributes["is_negated"]:
-                    if ent._.target_rule.literal !="ice hockey":
-                        devices.append(ent._.target_rule.literal)
-                    else:
-                        devices=devices+["2", "3", "4", "5"]
-        else:
-            devices="-1"
-    else:
-        devices = "-1"
+    #doc=context(doc)
 
-    return devices
+    if len(doc.ents) > 0:
+        devices=[]
+        for ent in doc.ents:
+            if ent.label_ == "safety" and not ent._.context_attributes["is_negated"]:
+                if ent._.target_rule.literal !="ice hockey":
+                    devices.append(int(ent._.target_rule.literal))
+                else:
+                    devices=devices+[2, 3, 4, 5]
+    else:
+        devices=[-1]
+
+    return list(set(devices))
 
 def get_disposition(merged_notes, disposition, no1, bp1, complaint):
     """
@@ -497,15 +495,14 @@ def touchups(data):
     data["IN"][data["NO1"]==71]=16
 
     #manual touchups of other requests
-    data["sd1"] = -1
     data["SPORTS CODE"] = 4
     data[(data["NO1"] == 12) & (data["BP1"] == 110)]["NO2"] = 41
     data[(data["NO1"] == 12) & (data["BP1"] == 110)]["BP2"] = 135
     data[data["DISP"] == 1]["BP1"] = 999
     data[data["DISP"] == 1]["NO1"] = 99
     data[data["NO1"] == 71]["IN"] = 16
-    data[data["diagnosis"].str.lower().str.contain("monteggia")]["NO2"]=13
-    data[data["diagnosis"].str.lower().str.contain("monteggia")]["BP2"] = 430
+    data[data["Diagnosis"].astype(str).str.lower().str.contains("monteggia")]["NO2"]=13
+    data[data["Diagnosis"].astype(str).str.lower().str.contains("monteggia")]["BP2"] = 430
 
     return data
 

@@ -18,10 +18,12 @@ class PostProcess:
         self.params = params
 
         raw_notes["Arrival Date"] = pd.to_datetime(raw_notes["Arrival Date"])
+        raw_notes["Date of Birth"] = pd.to_datetime(raw_notes["Date of Birth"])
         inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"])
         inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
         inference_notes = inference_notes[['CSN',  'probs', 'is_chirpp', 'PHAC Narrative',
-                                           'pre_processed', 'io', 'intent', 'sub']]
+                                           'pre_processed', 'io', 'intent', 'sub',
+                                           'location', 'area', 'ampm', 'has_sd']]
         merged = raw_notes.merge(inference_notes, how="inner", on=["CSN"])
         merged["Arrival Time"] = pd.to_datetime(merged["Arrival Time"].astype(str))
         merged = merged.groupby(["MRN", "Arrival Date", "Arrival Time"])
@@ -38,7 +40,8 @@ class PostProcess:
             group_df["ScrMRN"] = data["MRN"].apply(scramble_mrn).drop_duplicates()
             group_df["DOB"] = pd.to_datetime(data["Date of Birth"]).apply(
                 lambda x: x.strftime('%Y-%m-%d')).drop_duplicates()
-            group_df["AGE"] =data.apply(lambda x: calculate_age(data["Arrival Date"], data["Date of Birth"]), axis=1)
+            group_df["AGE"] = calculate_age(data["Arrival Date"].drop_duplicates().tolist()[0],
+                                            data["Date of Birth"].drop_duplicates().tolist()[0])
             group_df["ER Date"] = pd.to_datetime(data["Arrival Date"]).dt.strftime('%Y-%m-%d').drop_duplicates()
             group_df["ER Time"] = data["Arrival Time"].apply(lambda x: x.strftime('%H:%M')).drop_duplicates()
             group_df["CTAS"] = data["CTAS"].apply(process_ctas).drop_duplicates()
@@ -54,9 +57,9 @@ class PostProcess:
             group_df["I/O"] = data["io"].drop_duplicates()
             group_df["IN"] = data["intent"]
             group_df["sub"] = data["sub"]
-            group_df["area"]=data["area"]
-            group_df["location"]=data["location"]
-            group_df["ampm"]=data["ampm"]
+            group_df["AREA"]=data["area"]
+            group_df["LOCATION"]=data["location"]
+            group_df["AM/PM"]=data["ampm"]
             group_df["has_sd"]=data["has_sd"]
 
             for_narrative = data[data["Note Type"].isin(self.params["note_types"])]
@@ -89,7 +92,7 @@ class PostProcess:
         """
         complaints = self.sheet2["Chief Complaint"].to_list()
         notes = self.sheet2["pre_processed"].to_list()
-        diags = self.sheet2["Diagnosis"]
+        diags = self.sheet2["Diagnosis"].to_list()
         merged_notes = self.sheet2["Notes"].to_list()
         dispositions = self.sheet2["Disposition"].to_list()
         has_substance = self.sheet2["sub"].to_list()
@@ -118,13 +121,14 @@ class PostProcess:
                 no1, bp1 = injuries(diag)
             report_disposition = get_disposition(merged, disp, no1, bp1, complaint)
             subid = get_substances(note, has_sub)
-            devices=get_devices(complaint, has_sd)
-            if len(devices) > 0:
-                for i in range(len(devices)):
-                    if i > 4:
-                        break
-                    else:
-                        autofill_cols[safety_cols[i]].append(devices[i])
+            devices=get_devices(note, has_sd)
+            i=0
+            while i <= 4:
+                if i <= len(devices)-1:
+                    autofill_cols[safety_cols[i]].append(devices[i])
+                else:
+                    autofill_cols[safety_cols[i]].append(None)
+                i+=1
 
             autofill_cols["NO1"].append(no1)
             autofill_cols["BP1"].append(bp1)

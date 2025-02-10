@@ -106,8 +106,6 @@ inference = Inference(classification_model=os.path.abspath(params["inference"]["
                         ampm_model=os.path.abspath(params["inference"]["am_pm_model"]),
                         ampm_labels=params["inference"]["am_pm_labels"],
                         embedding_model=params["inference"]["embedding_model"],
-                        sd_model=os.path.abspath(params["inference"]["sd_model"]),
-                        sd_labels=params["inference"]["sd_labels"],
                         tasks=params["inference"]["embedding_tasks"],
                         device=device)
 
@@ -184,6 +182,13 @@ inference_notes["sub"][inference_notes["is_chirpp"]] = substance
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying inside/outside")
 
+io=inference.get_io(notes=inference_notes[inference_notes["is_chirpp"]],
+                          notes_col=params["inference"]["note_col"],
+                          cutoff=params["inference"]["io_cutoff"])
+
+inference_notes["io"]=None
+inference_notes["io"][(inference_notes["is_chirpp"])] = io
+
 #TODO add location, area, ampm
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying am/pm")
 
@@ -213,19 +218,12 @@ area=inference.get_area(notes=inference_notes[inference_notes["is_chirpp"]],
 inference_notes["area"]=None
 inference_notes["area"][inference_notes["is_chirpp"]] = area
 
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying if Sds are used")
-
-has_sd=inference.get_sd(notes=inference_notes[inference_notes["is_chirpp"]],
-                              notes_col=params["inference"]["note_col"],
-                              cutoff=params["inference"]["sd_cutoff"])
-inference_notes["has_sd"]=None
-inference_notes["has_sd"][inference_notes["is_chirpp"]] = has_sd
-
-
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings")
-embeddings=inference.get_embeddings(notes=inference_notes,
-                                      notes_col=params["inference"]["note_col"],
-                                      tasks=params["inference"]["embedding_tasks"])
+# no neeed to calculate embeddings if we are not going to use them.
+if args.to_database or args.save_embeddings:
+    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings")
+    embeddings=inference.get_embeddings(notes=inference_notes,
+                                          notes_col=params["inference"]["note_col"],
+                                          tasks=params["inference"]["embedding_tasks"])
 
 
 # post processing to generate the final output
@@ -234,7 +232,7 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Re
 params["post_process"]["pos_complaints"] = params["inference"]["pos_complaints"]
 postprocess = PostProcess(preprocessed_notes.raw_notes, inference_notes, params["post_process"])
 postprocess = postprocess.autofill()
-postprocess=postprocess.touchups()
+
 
 if args.to_excel:
     print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Creating Excel Report")
