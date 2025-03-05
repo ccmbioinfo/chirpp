@@ -264,7 +264,10 @@ class Inference:
         for lab in labels:
             edited = lab["label"]
             edited = edited.replace("LABEL_", "")
-            edited = int(edited) + 1
+            if edited=="0":
+                edited="I"
+            else:
+                edited="O"
             edited_labels.append(edited)
 
         scores = []
@@ -294,7 +297,10 @@ class Inference:
         for lab in labels:
             edited = lab["label"]
             edited = edited.replace("LABEL_", "")
-            edited = int(edited) + 1
+            if edited=="0":
+                edited="a"
+            else:
+                edited="p"
             edited_labels.append(edited)
 
         scores = []

@@ -120,7 +120,7 @@ class PostProcess:
             else:
                 no1, bp1 = injuries(diag)
             report_disposition = get_disposition(merged, disp, no1, bp1, complaint)
-            subid = get_substances(note, has_sub)
+            subid = get_substances(note, has_sub, no1, bp1)
             devices=get_devices(note, has_sd)
             i=0
             while i <= 4:

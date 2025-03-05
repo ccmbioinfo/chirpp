@@ -404,7 +404,7 @@ def injuries(dx):
     return no, bp
 
 
-def get_substances(clean_text, has_substance, nlp=med_nlp):
+def get_substances(clean_text, has_substance, no1, bp1, nlp=med_nlp):
     """
     finds the substances that are mentioned in the text, this may or may not (usually is) the substance that has caused
     the incident, this is done in a context aware manner so if someone says denies alcohol that one is not captured
@@ -413,6 +413,9 @@ def get_substances(clean_text, has_substance, nlp=med_nlp):
     :return: returns the name of the substance, sometimes this may end up being a prescribed substance that is not the cause
     of the incident, still working on that.
     """
+
+    if no1==50 and bp1==500:
+        has_substance=1
 
     if has_substance in [1, "1"]:
         doc = nlp(str(clean_text))
@@ -462,6 +465,10 @@ def get_disposition(merged_notes, disposition, no1, bp1, complaint):
     """
     if disposition in ["LAMA", "LBT2", "LWBR", "LWBS"]:
         disp_code = 1
+    elif "Consults" in merged_notes or "Consult Follow up" in merged_notes or "Consult" in merged_notes:
+        disp_code = 6
+    elif disposition == "Deceased":
+        disp_code = 9
     elif disposition in ["Admit", "Transfer to Another Facility", "Send to OR", "Send to Clinic"]:
         if no1 == 71 and bp1 == 900:
             disp_code = 8
@@ -469,10 +476,6 @@ def get_disposition(merged_notes, disposition, no1, bp1, complaint):
             disp_code = 8
         else:
             disp_code = 7
-    elif disposition == "Deceased":
-        disp_code = 9
-    elif "Consults" in merged_notes or "Consult Follow up" in merged_notes:
-        disp_code = 6
     else:
         disp_code = None
 
@@ -487,10 +490,10 @@ def touchups(data):
     """
     # bathroom, washroom, laminate floors, laminate indoors
     data["AREA"][data["PHAC Narrative"].str.contains("monkey bar")]=59
-    data["I/O"][data["PHAC Narrative"].str.contains("laminate floor")] = 1
-    data["I/O"][data["PHAC Narrative"].str.contains("snow")] = 2
-    data["I/O"][data["PHAC Narrative"].str.contains("washroom")]=1
-    data["I/O"][data["PHAC Narrative"].str.contains("bathroom")] = 1
+    data["I/O"][data["PHAC Narrative"].str.contains("laminate floor")] = "I"
+    data["I/O"][data["PHAC Narrative"].str.contains("snow")] = "O"
+    data["I/O"][data["PHAC Narrative"].str.contains("washroom")]="I"
+    data["I/O"][data["PHAC Narrative"].str.contains("bathroom")] = "O"
     data["DISP"][data["Diagnosis"].str.lower() == "pulled elbow"] = 3
     data["IN"][data["NO1"]==71]=16
 
