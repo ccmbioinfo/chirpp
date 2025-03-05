@@ -60,7 +60,7 @@ class PostProcess:
             group_df["AREA"]=data["area"]
             group_df["LOCATION"]=data["location"]
             group_df["AM/PM"]=data["ampm"]
-            group_df["has_sd"]=data["has_sd"]
+
 
             for_narrative = data[data["Note Type"].isin(self.params["note_types"])]
             for_narrative["Note Type"] = pd.Categorical(for_narrative["Note Type"],
