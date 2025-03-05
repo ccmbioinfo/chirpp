@@ -96,7 +96,7 @@ class PostProcess:
         merged_notes = self.sheet2["Notes"].to_list()
         dispositions = self.sheet2["Disposition"].to_list()
         has_substance = self.sheet2["sub"].to_list()
-        has_device=self.sheet2["has_sd"].to_list()
+
 
         autofill_cols = {
             "subID": [],
@@ -111,8 +111,8 @@ class PostProcess:
         }
         safety_cols = ["sd1", "sd2", "sd3", "sd4", "sd5"]
 
-        for complaint, note, merged, diag, disp, has_sub, has_sd in zip(complaints, notes, merged_notes, diags,
-                                                                dispositions, has_substance, has_device):
+        for complaint, note, merged, diag, disp, has_sub, in zip(complaints, notes, merged_notes, diags,
+                                                                dispositions, has_substance):
             diag = str(diag).lower()
             if complaint == "Medical Device Problem":
                 no1 = 99
@@ -121,7 +121,7 @@ class PostProcess:
                 no1, bp1 = injuries(diag)
             report_disposition = get_disposition(merged, disp, no1, bp1, complaint)
             subid = get_substances(note, has_sub, no1, bp1)
-            devices=get_devices(note, has_sd)
+            devices=get_devices(note)
             i=0
             while i <= 4:
                 if i <= len(devices)-1:
@@ -150,8 +150,8 @@ class PostProcess:
         if os.path.exists(path) and not overwrite:
             raise FileExistsError("{} already exisits".format(path))
 
-        self.sheet1 = self.sheet1.drop(columns=["pre_processed", "Disposition", "is_chirpp", "probs", "has_sd"])
-        self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "is_chirpp", "probs", "has_sd"])
+        self.sheet1 = self.sheet1.drop(columns=["pre_processed", "Disposition", "is_chirpp", "probs"])
+        self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "is_chirpp", "probs"])
 
         self.sheet2=touchups(self.sheet2)
 
