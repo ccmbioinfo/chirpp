@@ -169,6 +169,14 @@ class DataBase:
             'ctas':'CTAS', 'note_type':'Note Type', 'author_type':'Author Type',
             'author_service':'Author Service', 'note_text':'Note Text',
         })
+        if "LINE" not in visits.columns:
+            visits["LINE"]=1
+
+        if "CHIRPP Icon" not in visits.columns:
+            visits["CHIRPP Icon"]=None
+
+        if "Patient Name" not in visits.columns:
+            visits["Patient Name"]=None
 
         return visits
 

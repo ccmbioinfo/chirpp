@@ -23,7 +23,7 @@ class PostProcess:
         inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
         inference_notes = inference_notes[['CSN',  'probs', 'is_chirpp', 'PHAC Narrative',
                                            'pre_processed', 'io', 'intent', 'sub',
-                                           'location', 'area', 'ampm', 'has_sd']]
+                                           'location', 'area', 'ampm']]
         merged = raw_notes.merge(inference_notes, how="inner", on=["CSN"])
         merged["Arrival Time"] = pd.to_datetime(merged["Arrival Time"].astype(str))
         merged = merged.groupby(["MRN", "Arrival Date", "Arrival Time"])
