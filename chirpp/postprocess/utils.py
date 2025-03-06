@@ -438,7 +438,7 @@ def get_substances(clean_text, has_substance, no1, bp1, nlp=med_nlp):
     return substance
 
 
-def get_devices(clean_text, is_sd, nlp=med_nlp):
+def get_devices(clean_text, nlp=med_nlp):
     doc=nlp(str(clean_text))
     #doc=context(doc)
 
