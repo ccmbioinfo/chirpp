@@ -230,6 +230,7 @@ if args.to_database or args.save_embeddings:
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Report")
 
 params["post_process"]["pos_complaints"] = params["inference"]["pos_complaints"]
+params["post_process"]["terms_to_fix"] = params["pre_process"]["terms_to_fix"]
 postprocess = PostProcess(preprocessed_notes.raw_notes, inference_notes, params["post_process"])
 postprocess = postprocess.autofill()
 

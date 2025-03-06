@@ -136,7 +136,7 @@ post_process:
                     'depressed', 'anorexia nervosa', 'caustic', 'corrosive' ]
 
 
-  report_header: [ "CSN", "MRN", "ScrMRN", "DOB", "AGE", "SEX", "POSTAL", "ER Time", "ER Date", "INJ DATE", "Hr", "Min", "AM/PM",
+  report_header: [ "CSN", "MRN", "ScrMRN", "DOB", "AGE", "SEX", "POSTAL", "ER Time", "ER Date", "ED Day", "INJ DATE", "Hr", "Min", "AM/PM",
                    "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "W4P", "NO1", "BP1", "NO2",
                    "BP2", "NO3", "BP3", 'veh', 'veh p',"Notes", 'LOS', "DISP", "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
                    "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition"]

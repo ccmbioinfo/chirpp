@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from datetime import datetime
 
 import medspacy
 import pandas as pd
@@ -9,6 +10,8 @@ import spacy
 
 from chirpp.postprocess.extra_contex_rules import context_rules
 from chirpp.postprocess.target_rules import *
+
+from chirpp.preprocess.utils import replace_terms
 
 if not spacy.util.is_package("en_core_web_trf"):
     subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_trf"])
@@ -26,6 +29,10 @@ target.add(safety_devices)
 class MissingDataError(Exception):
     pass
 
+def get_day(datetime):
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    weekday=days[datetime.weekday()]
+    return weekday
 
 def process_ctas(CTAS):
     """
@@ -351,7 +358,7 @@ def injuries(dx):
         bp = 135
     elif ("intracranial" in dx) or (
             "brain" in dx and ("tumor" not in dx and "tumour" not in dx and "cancer" not in dx)) or (
-            "subarachnoid" in dx) or ("subdural" in dx and "hematoma" in dx) or("epidural" in dx) or (
+            "subarachnoid" in dx) or ("subdural" in dx and "hematoma" in dx) or ("epidural" in dx) or (
             ("intraventricular" in dx) and ("haemorrhage" in dx or "hemorrhage" in dx)):
         no = 43
         bp = 135
@@ -397,7 +404,7 @@ def injuries(dx):
     elif ("injury" in dx or "trauma" in dx):
         bp = body_parts(dx)
 
-    #if ("tibia" in dx and "fibula" in dx):
+    # if ("tibia" in dx and "fibula" in dx):
     #    no = natureOfInjury
     #    bp = body_parts(dx)
 
@@ -414,14 +421,14 @@ def get_substances(clean_text, has_substance, no1, bp1, nlp=med_nlp):
     of the incident, still working on that.
     """
 
-    if no1==50 and bp1==500:
-        has_substance=1
+    if no1 == 50 and bp1 == 500:
+        has_substance = 1
 
     if has_substance in [1, "1"]:
         doc = nlp(str(clean_text))
-        #doc=context(doc)
+        # doc=context(doc)
         if len(doc.ents) > 0:
-            substance=[]
+            substance = []
             for ent in doc.ents:
                 if ent.label_ == "SUBSTANCE" and not ent._.context_attributes["is_negated"]:
                     substance.append(ent.text)
@@ -433,27 +440,28 @@ def get_substances(clean_text, has_substance, no1, bp1, nlp=med_nlp):
         substance = None
 
     if substance is not None and len(substance) > 0:
-        substance=",".join(list(set(substance)))
+        substance = ",".join(list(set(substance)))
 
     return substance
 
 
 def get_devices(clean_text, nlp=med_nlp):
-    doc=nlp(str(clean_text))
-    #doc=context(doc)
+    doc = nlp(str(clean_text))
+    # doc=context(doc)
 
     if len(doc.ents) > 0:
-        devices=[]
+        devices = []
         for ent in doc.ents:
             if ent.label_ == "safety" and not ent._.context_attributes["is_negated"]:
-                if ent._.target_rule.literal !="ice hockey":
+                if ent._.target_rule.literal != "ice hockey":
                     devices.append(int(ent._.target_rule.literal))
                 else:
-                    devices=devices+[2, 3, 4, 5]
+                    devices = devices + [2, 3, 4, 5]
     else:
-        devices=[-1]
+        devices = [-1]
 
     return list(set(devices))
+
 
 def get_disposition(merged_notes, disposition, no1, bp1, complaint):
     """
@@ -465,48 +473,49 @@ def get_disposition(merged_notes, disposition, no1, bp1, complaint):
     """
     if disposition in ["LAMA", "LBT2", "LWBR", "LWBS"]:
         disp_code = 1
-    elif "Consults" in merged_notes or "Consult Follow up" in merged_notes or "Consult" in merged_notes:
-        disp_code = 6
-    elif disposition == "Deceased":
-        disp_code = 9
     elif disposition in ["Admit", "Transfer to Another Facility", "Send to OR", "Send to Clinic"]:
         if no1 == 71 and bp1 == 900:
             disp_code = 8
-        elif complaint=="Medical Device Problem":
+        elif complaint == "Medical Device Problem":
             disp_code = 8
         else:
             disp_code = 7
+    elif "Consults" in merged_notes or "Consult Follow up" in merged_notes or "Consult" in merged_notes \
+            or (no1 == 71 and bp1 == 900):
+        disp_code = 6
+    elif disposition == "Deceased":
+        disp_code = 9
     else:
         disp_code = None
 
     return disp_code
 
 
-def touchups(data):
+def touchups(data, terms):
     """
     these are some edge cases that we noticed while processing the notes, hopefully in the future these will be removed
     :param data: a dataframe namely sheet2
     :return: the same dataframe where some of the hardcoded values below changed
     """
     # bathroom, washroom, laminate floors, laminate indoors
-    data["AREA"][data["PHAC Narrative"].str.contains("monkey bar")]=59
+    data["AREA"][data["PHAC Narrative"].str.contains("monkey bar")] = 59
     data["I/O"][data["PHAC Narrative"].str.contains("laminate floor")] = "I"
     data["I/O"][data["PHAC Narrative"].str.contains("snow")] = "O"
-    data["I/O"][data["PHAC Narrative"].str.contains("washroom")]="I"
+    data["I/O"][data["PHAC Narrative"].str.contains("washroom")] = "I"
     data["I/O"][data["PHAC Narrative"].str.contains("bathroom")] = "O"
     data["DISP"][data["Diagnosis"].str.lower() == "pulled elbow"] = 3
-    data["IN"][data["NO1"]==71]=16
+    data["IN"][data["NO1"] == 71] = 16
 
-    #manual touchups of other requests
+    # manual touchups of other requests
     data["SPORTS CODE"] = 4
-    data[(data["NO1"] == 12) & (data["BP1"] == 110)]["NO2"] = 41
-    data[(data["NO1"] == 12) & (data["BP1"] == 110)]["BP2"] = 135
-    data[data["DISP"] == 1]["BP1"] = 999
-    data[data["DISP"] == 1]["NO1"] = 99
-    data[data["NO1"] == 71]["IN"] = 16
-    data[data["Diagnosis"].astype(str).str.lower().str.contains("monteggia")]["NO2"]=13
-    data[data["Diagnosis"].astype(str).str.lower().str.contains("monteggia")]["BP2"] = 430
+    data["NO2"][(data["NO1"] == 12) & (data["BP1"] == 110)] = 41
+    data["BP2"][(data["NO1"] == 12) & (data["BP1"] == 110)] = 135
+    data["BP1"][data["DISP"] == 1] = 999
+    data["NO1"][data["DISP"] == 1] = 99
+    data["IN"][data["NO1"] == 71] = 16
+    data["NO2"][data["Diagnosis"].astype(str).str.lower().str.contains("monteggia")] = 13
+    data["BP2"][data["Diagnosis"].astype(str).str.lower().str.contains("monteggia")] = 430
+    data["PHAC Narrative"]=data["PHAC Narrative"].apply(replace_terms, to_fix=terms)
+    data["sd1"][pd.isna(data["sd1"])] = -1
 
     return data
-
-

@@ -4,6 +4,7 @@ import pandas as pd
 from chirpp.postprocess.utils import *
 from chirpp.database.utils import calculate_age
 
+
 #TODO this needs to be refactored to utils so I can use it on database prepare report
 class PostProcess:
     def __init__(self, raw_notes, inference_notes, params):
@@ -43,6 +44,7 @@ class PostProcess:
             group_df["AGE"] = calculate_age(data["Arrival Date"].drop_duplicates().tolist()[0],
                                             data["Date of Birth"].drop_duplicates().tolist()[0])
             group_df["ER Date"] = pd.to_datetime(data["Arrival Date"]).dt.strftime('%Y-%m-%d').drop_duplicates()
+            group_df["ER Day"] = pd.to_datetime(data["Arrival Date"]).apply(get_day).drop_duplicates()
             group_df["ER Time"] = data["Arrival Time"].apply(lambda x: x.strftime('%H:%M')).drop_duplicates()
             group_df["CTAS"] = data["CTAS"].apply(process_ctas).drop_duplicates()
             group_df["Chief Complaint"] = data["Chief Complaint"].drop_duplicates()
@@ -153,7 +155,7 @@ class PostProcess:
         self.sheet1 = self.sheet1.drop(columns=["pre_processed", "Disposition", "is_chirpp", "probs"])
         self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "is_chirpp", "probs"])
 
-        self.sheet2=touchups(self.sheet2)
+        self.sheet2=touchups(self.sheet2, self.params["terms_to_fix"])
 
         with pd.ExcelWriter(path) as out:
             self.sheet1.to_excel(out, sheet_name="Sheet 1", index=False)
