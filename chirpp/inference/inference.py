@@ -57,22 +57,22 @@ class Inference:
         self.ampm_labels = ampm_labels
         self.embedding_model = embedding_model
 
-    def generate_pipeline(self, model, labels, taks_name, task_type="classification"):
-        if model is None:
+    def generate_pipeline(self, model_dir, labels, taks_name, task_type="classification"):
+        if model_dir is None:
             raise NoModelError("There is no model for {}".format(taks_name))
 
         if task_type == "classification":
-            model = AutoModelForSequenceClassification.from_pretrained(model)
-            tokenizer = AutoTokenizer.from_pretrained(model, padding="max_length", truncation=True)
-            pipe = pipeline("text-classification", model=model, tokenizer=tokenizer, device=self.device)
+            model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+            tokenizer = AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True)
+            pipe = pipeline("text-classification", model=model_dir, tokenizer=tokenizer, device=self.device)
         elif task_type == "summarization":
-            model = AutoModelForSequenceClassification.from_pretrained(model, num_labels=labels)
-            tokenizer = AutoTokenizer.from_pretrained(model, padding="max_length", truncation=True)
-            pipe = pipeline("summarization", model=model, tokenizer=tokenizer,
+            model = AutoModelForSeq2SeqLM.from_pretrained(model_dir, num_labels=labels)
+            tokenizer = AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True)
+            pipe = pipeline("summarization", model=model_dir, tokenizer=tokenizer,
                             device=self.device)
         elif task_type == "embeddings":
-            model = AutoModel.from_pretrained(model, add_pooling_layer=False)
-            tokenizer=AutoTokenizer.from_pretrained(model, padding="max_length", truncation=True,
+            model = AutoModel.from_pretrained(model_dir, add_pooling_layer=False)
+            tokenizer=AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True,
                                                     return_tensors='pt', max_length=1024)
             pipe=(model, tokenizer)
         else:
