@@ -41,6 +41,8 @@ class Inference:
         """
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = device
         self.classification_model = classification_model
         self.summarization_model = summarization_model
         self.classification_labels = classification_labels
