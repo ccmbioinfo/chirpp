@@ -67,8 +67,7 @@ inference:
   # for some reason the huggingface thing needs to point to the model cannot save it to a folder
   # we are doing the same thing for the spacy model and huggingface will download it and keep in cache in the
   #vm I don't think this is a big deal since we are using the model as is and once downloaded will stay in the vm
-  embedding_model: "jinaai/jina-embeddings-v3"
-  embedding_tasks: [ "classification", "separation", "text-matching", "retrieval.passage", "retrieval.query" ]
+  embedding_model: "models/snowflake_arctic_embed_l_2"
 
   intent_labels: 7
   io_labels: 2

@@ -88,7 +88,7 @@ inference_notes = preprocess.merged_raw.copy()
 
 inference_notes = inference_notes[~pd.isnull(inference_notes[params["inference"]["note_col"]])].copy()
 
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Collecting inference models")
+
 # set up inference instance
 inference = Inference(classification_model=os.path.abspath(params["inference"]["classification_model"]),
                         summarization_model=os.path.abspath(params["inference"]["summarization_model"]),
@@ -222,8 +222,7 @@ inference_notes["area"][inference_notes["is_chirpp"]] = area
 if args.to_database or args.save_embeddings:
     print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings")
     embeddings=inference.get_embeddings(notes=inference_notes,
-                                          notes_col=params["inference"]["note_col"],
-                                          tasks=params["inference"]["embedding_tasks"])
+                                          notes_col=params["inference"]["note_col"])
 
 
 # post processing to generate the final output
