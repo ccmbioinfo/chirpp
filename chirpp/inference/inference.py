@@ -89,7 +89,7 @@ class Inference:
         """
 
         if self.classification_model is not None:
-            pipe = self.generate_pipeline(model=self.classification_model,
+            pipe = self.generate_pipeline(model_dir=self.classification_model,
                                           labels=self.classification_labels,
                                           taks_name="classification", task_type="classification")
         else:
@@ -132,7 +132,7 @@ class Inference:
         """
 
         if self.summarization_model is not None:
-            pipe = self.generate_pipeline(model=self.substance_model,
+            pipe = self.generate_pipeline(model_dir=self.substance_model,
                                           labels=0,
                                           taks_name="summarization", task_type="summarization")
         else:
@@ -157,7 +157,7 @@ class Inference:
         """
 
         if self.intent_model is not None:
-            pipe = self.generate_pipeline(model=self.intent_model,
+            pipe = self.generate_pipeline(model_dir=self.intent_model,
                                           labels=self.intent_labels,
                                           taks_name="intent", task_type="classification")
         else:
@@ -196,7 +196,7 @@ class Inference:
         """
 
         if self.substance_model is not None:
-            pipe = self.generate_pipeline(model=self.substance_model,
+            pipe = self.generate_pipeline(model_dir=self.substance_model,
                                           labels=self.substance_labels,
                                           taks_name="substance", task_type="classification")
         else:
@@ -234,7 +234,7 @@ class Inference:
         :return: labels in a list
         """
         if self.io_model is not None:
-            pipe = self.generate_pipeline(model=self.io_model,
+            pipe = self.generate_pipeline(model_dir=self.io_model,
                                           labels=2,
                                           taks_name="io", task_type="classification")
         else:
@@ -275,7 +275,7 @@ class Inference:
         :return:
         """
         if self.io_model is not None:
-            pipe = self.generate_pipeline(model=self.ampm_model,
+            pipe = self.generate_pipeline(model_dir=self.ampm_model,
                                           labels=self.ampm_labels,
                                           taks_name="ampm", task_type="classification")
         else:
@@ -316,7 +316,7 @@ class Inference:
         :return:
         """
         if self.io_model is not None:
-            pipe = self.generate_pipeline(model=self.location_model,
+            pipe = self.generate_pipeline(model_dir=self.location_model,
                                           labels=self.location_labels,
                                           taks_name="location", task_type="classification")
         else:
@@ -355,7 +355,7 @@ class Inference:
         :return:
         """
         if self.io_model is not None:
-            pipe = self.generate_pipeline(model=self.area_model,
+            pipe = self.generate_pipeline(model_dir=self.area_model,
                                           labels=self.area_labels,
                                           taks_name="area", task_type="classification")
         else:
@@ -393,7 +393,7 @@ class Inference:
         :return: a dictionary of embeddings where key is the task and the value is the embedding
         """
         if self.io_model is not None:
-            pipe = self.generate_pipeline(model=self.io_model,
+            pipe = self.generate_pipeline(model_dir=self.io_model,
                                           labels=2,
                                           taks_name="embeddings", task_type="embeddings")
             model = pipe[0].to(self.device)
