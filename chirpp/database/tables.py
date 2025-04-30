@@ -32,6 +32,7 @@ class Visits(Base):
     age = Column(Integer)
     mrn = Column(Integer, ForeignKey("patients.mrn"), index=True)
     arrival_date = Column(Date)
+    day_of_week = Column(String)
     arrival_time = Column(Time)
     postal_code = Column(String)
     chief_complaint = Column(String, index=True)
@@ -76,6 +77,17 @@ class Notes(Base):
     __table_args__ = (Index('ix_raw_notes_ts_vector',
                             notes_ts_vector, postgresql_using='gin'), )
 
+class ChunkedNotes(Base):
+    __tablename__ = "chunked_notes"
+    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
+    note_id = Column(Integer, ForeignKey("notes.id"))
+    chunk_number = Column(Integer)
+    chunk_text = Column(Text)
+    embeddings=Column(Vector(1024))
+    chunk_text_ts_vector = Column(TSVector(), Computed())
+    __table_args__ = (Index('ix_chunk_text_ts_vector',
+                            chunk_text_ts_vector, postgresql_using='gin'), )
+
 class ProcessedNotes(Base):
     __tablename__="processed_notes"
     id=Column(Integer, autoincrement=True, primary_key=True, index=True)
@@ -83,11 +95,7 @@ class ProcessedNotes(Base):
     note_text=Column(Text)
     note_text_ts_vector=Column(TSVector(), Computed("to_tsvector('english', note_text)",
                                persisted=True))
-    jina_query_embed=Column(Vector(1024))
-    jina_pass_embed = Column(Vector(1024))
-    jina_sep_embed=Column(Vector(1024))
-    jina_class_embed=Column(Vector(1024))
-    jina_match_embed=Column(Vector(1024))
+    embeddings=Column(Vector(1024))
     __table_args__ = (Index('ix_note_text_ts_vector',
                             note_text_ts_vector, postgresql_using='gin'), )
 
@@ -152,7 +160,7 @@ class CustomLabels(Base):
     __tablename__ = "custom_labels"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
     label_name = Column(String, index=True)
-    label_description = Column(String)
+    label_description = Column(Text)
     key_words = Column(String)  # this might be more than just comma seprarted key words
     context_aware = Column(Boolean)  # this will generate new section rules on the fly and search
     context_rules = Column(JSON)  # this will need a schema verification system

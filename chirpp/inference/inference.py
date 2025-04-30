@@ -134,7 +134,7 @@ class Inference:
         """
 
         if self.summarization_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.substance_model,
+            pipe = self.generate_pipeline(model_dir=self.summarization_model,
                                           labels=0,
                                           taks_name="summarization", task_type="summarization")
         else:
@@ -276,7 +276,7 @@ class Inference:
         :param cutoff:
         :return:
         """
-        if self.io_model is not None:
+        if self.ampm_model is not None:
             pipe = self.generate_pipeline(model_dir=self.ampm_model,
                                           labels=self.ampm_labels,
                                           taks_name="ampm", task_type="classification")
@@ -317,7 +317,7 @@ class Inference:
         :param cutoff:
         :return:
         """
-        if self.io_model is not None:
+        if self.location_model is not None:
             pipe = self.generate_pipeline(model_dir=self.location_model,
                                           labels=self.location_labels,
                                           taks_name="location", task_type="classification")
@@ -356,7 +356,7 @@ class Inference:
         :param cutoff:
         :return:
         """
-        if self.io_model is not None:
+        if self.area_model is not None:
             pipe = self.generate_pipeline(model_dir=self.area_model,
                                           labels=self.area_labels,
                                           taks_name="area", task_type="classification")
@@ -394,7 +394,7 @@ class Inference:
         :param tasks: list of tasks to be passed to the model, if None just plain embeddings will be returned
         :return: a dictionary of embeddings where key is the task and the value is the embedding
         """
-        if self.io_model is not None:
+        if self.embedding_model is not None:
             pipe = self.generate_pipeline(model_dir=self.io_model,
                                           labels=2,
                                           taks_name="embeddings", task_type="embeddings")

@@ -426,7 +426,7 @@ def get_substances(clean_text, has_substance, no1, bp1, nlp=med_nlp):
 
     if has_substance in [1, "1"]:
         doc = nlp(str(clean_text))
-        # doc=context(doc)
+        sdoc=context(doc)
         if len(doc.ents) > 0:
             substance = []
             for ent in doc.ents:
@@ -447,7 +447,7 @@ def get_substances(clean_text, has_substance, no1, bp1, nlp=med_nlp):
 
 def get_devices(clean_text, nlp=med_nlp):
     doc = nlp(str(clean_text))
-    # doc=context(doc)
+    doc=context(doc)
 
     if len(doc.ents) > 0:
         devices = []
