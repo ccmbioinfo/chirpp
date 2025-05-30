@@ -1,0 +1,8 @@
+# please only use the packages that you are actively importing
+pandas
+Levenshtein
+numpy
+sentence-transformers
+sqlalchemy
+python-dotenv
+psycopg2

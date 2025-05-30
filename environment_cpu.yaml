@@ -1,0 +1,34 @@
+name: chirpp_cpu
+channels:
+  - pytorch
+  - nvidia
+  - defaults
+  - conda-forge
+dependencies:
+  - pytorch-cpu
+  - pip
+  - python=3.10
+  - postgresql
+  - pgvector
+  - pip:
+      - pandas==2.1.0
+      - Levenshtein
+      - huggingface_hub==0.25.0
+      - spacy
+      - medspacy
+      - sentence-transformers
+      - transformers
+      - tokenizers
+      - spacy_transformers
+      - sentencepiece
+      - safetensors
+      - pyyaml
+      - python-dateutil
+      - openpyxl
+      - SQLAlchemy==1.4.54
+      - python-dotenv
+      - psycopg2
+      - pgvector
+      - einops
+variables:
+  PYTHONNOUSERSITE: '0'
