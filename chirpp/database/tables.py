@@ -1,6 +1,3 @@
-from datetime import datetime
-from math import floor
-
 from sqlalchemy import (
     Column, ForeignKey, Integer, String, DateTime, 
     Date, Text, Float, Time, types, Computed, Index, Boolean,
@@ -31,12 +28,14 @@ class Visits(Base):
     sex = Column(String)
     age = Column(Integer)
     mrn = Column(Integer, ForeignKey("patients.mrn"), index=True)
-    arrival_date = Column(Date)
-    day_of_week = Column(String)
+    arrival_date = Column(Date, index=True)
     arrival_time = Column(Time)
+    day_of_week = Column(String)
+    sk_narrative=Column(Text)
+    phac_narrative = Column(Text)
     postal_code = Column(String)
     chief_complaint = Column(String, index=True)
-    diagnosis = Column(String)
+    diagnosis = Column(String, index=True)
     disposition = Column(String)
     ctas = Column(Integer, nullable=True)
     los = Column(Float)
@@ -45,29 +44,41 @@ class Visits(Base):
     address=Column(String)
     city = Column(String)
     province = Column(String)
+    sk_narrative_vector = Column(TSVector(), Computed(
+        "to_tsvector('english', sk_narrative)",
+        persisted=True))
+    phac_narrative_vector = Column(TSVector(), Computed(
+        "to_tsvector('english', phac_narrative)",
+        persisted=True))
+
+    __table_args__ = (Index('ix_sk_narrative_ts_vector',
+                            sk_narrative_vector, postgresql_using='gin'),
+                      Index('ix_phac_narrative_ts_vector',
+                            phac_narrative_vector, postgresql_using='gin'),
+                      )
 
 
 class Referrals(Base):
     __tablename__ = "referrals"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    csn = Column(Integer, ForeignKey("visits.csn"))
+    csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     referrals = Column(String)
 
 
 class Problems(Base):
     __tablename__ = "problems"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    csn = Column(Integer, ForeignKey("visits.csn"))
+    csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     problem = Column(String)
 
 
 class Notes(Base):
     __tablename__ = "notes"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    csn = Column(Integer, ForeignKey("visits.csn"))
+    csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     note_type = Column(String, index=True)
-    author_type = Column(String)
-    author_service = Column(String)
+    author_type = Column(String, index=True)
+    author_service = Column(String, index=True)
     note_text = Column(Text)
     # this is the postgres ts vector column, it is a computed column
     notes_ts_vector = Column(TSVector(), Computed(
@@ -80,18 +91,16 @@ class Notes(Base):
 class ChunkedNotes(Base):
     __tablename__ = "chunked_notes"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    note_id = Column(Integer, ForeignKey("notes.id"))
+    note_id = Column(Integer, ForeignKey("notes.id"), index=True)
     chunk_number = Column(Integer)
     chunk_text = Column(Text)
     embeddings=Column(Vector(1024))
-    chunk_text_ts_vector = Column(TSVector(), Computed())
-    __table_args__ = (Index('ix_chunk_text_ts_vector',
-                            chunk_text_ts_vector, postgresql_using='gin'), )
+
 
 class ProcessedNotes(Base):
     __tablename__="processed_notes"
     id=Column(Integer, autoincrement=True, primary_key=True, index=True)
-    csn = Column(Integer, ForeignKey("visits.csn"))
+    csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     note_text=Column(Text)
     note_text_ts_vector=Column(TSVector(), Computed("to_tsvector('english', note_text)",
                                persisted=True))
@@ -103,17 +112,15 @@ class ProcessedNotes(Base):
 class Cases(Base):
     __tablename__ = "chirpp_report"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    csn = Column(Integer, ForeignKey("visits.csn"))
-    injury_date = Column(Date)
+    csn = Column(Integer, ForeignKey("visits.csn"), index=True)
+    injury_date = Column(Date, index=True)
     injury_hour = Column(Integer)
     injury_min = Column(Integer)
-    am_pm = Column(Integer)
-    i_o = Column(Integer)
+    am_pm = Column(String)
+    i_o = Column(String)
     location = Column(Integer)
     area = Column(Integer)
     place = Column(String)
-    sk_narratvie=Column(Text)
-    phac_narrative = Column(Text)
     w4p = Column(Integer)
     no1 = Column(Integer)
     bp1 = Column(Integer)
@@ -121,10 +128,9 @@ class Cases(Base):
     bp2 = Column(Integer)
     no3 = Column(Integer)
     bp3 = Column(Integer)
-    notes = Column(Text) #I do not need this, this will be generated from raw notes do not need them in the excel
-    # files
+    notes = Column(Text)
     disp = Column(Integer)
-    intent = Column(Integer)
+    intent = Column(Integer, index=True)
     veh = Column(Integer)
     veh_p = Column(String)
     sub = Column(Integer)
@@ -136,23 +142,6 @@ class Cases(Base):
     sd5 = Column(Integer)
     sports_code = Column(Integer)
     # this is the sections removed notes these are used for inference for the most part
-    phac_ts_vector = Column(TSVector(), Computed(
-        "to_tsvector('english', phac_narrative)",
-        persisted=True))
- 
-    notes_ts_vector = Column(TSVector(), Computed(
-        "to_tsvector('english', notes)",
-        persisted=True))
-    sk_ts_vector = Column(TSVector(), Computed(
-        "to_tsvector('english', sk_narrative)",
-        persisted=True))
-
-    __table_args__ = (
-        Index('ix_phac_ts_vector',
-              phac_ts_vector, postgresql_using='gin'),
-        Index('ix_notes_ts_vector',
-              notes_ts_vector, postgresql_using='gin'),
-    )
 
 
 # these are the custom labels that are created for different research purposes
@@ -171,8 +160,8 @@ class CustomLabels(Base):
 class CustomLabelVisits(Base):
     __tablename__ = "custom_label_visits"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    label_id = Column(Integer, ForeignKey("custom_labels.id"))
-    csn = Column(Integer, ForeignKey("visits.csn"))
+    label_id = Column(Integer, ForeignKey("custom_labels.id"), index=True)
+    csn = Column(Integer, ForeignKey("visits.csn"), index=True)
 
 class Users(Base):
     __tablename__="users"
@@ -194,8 +183,8 @@ class Managers(Base):
 class Logs(Base):
     __tablename__="logs"
     id=Column(Integer, autoincrement=True, primary_key=True)
-    user=Column(Integer, ForeignKey("users.id"))
-    timestamp=Column(DateTime)
+    user=Column(Integer, ForeignKey("users.id"), index=True)
+    timestamp=Column(DateTime, index=True)
     command=Column(String)
 
 
