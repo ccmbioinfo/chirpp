@@ -16,17 +16,18 @@ This document outlines the project's objectives and key components in more detai
 
 The main objectives of the CHIRPP project are:
 
-* Objective 1
-* Objective 2
-* Objective 3
+* Classify chirpp cases from all the ED presentations
+* Generate reports for human review
+* Create a one-stup shop for full text search
 
 ## Key Components
 
 The CHIRPP project consists of the following key components:
 
-* Component A
-* Component B
-* Component C
+* Note reading and pre processing
+* Inference using a selection of custom fine-tuned models to extract information
+* Postprocessing to generate human readable reports
+* Pushing results to a database with LLM embeddings and postgres ts vector indexing
 
 ## Classes
 
@@ -83,23 +84,6 @@ Key methods of the `PostProcess` class include:
 
 *   `autofill()`: Automatically fills in data fields based on processed note information.
 *   `create_report()`: Generates a structured report from the processed data.
-
-### `chirpp.postprocess.events.Event`
-
-The `Event` class is designed to represent significant occurrences or pieces of information extracted from medical notes. It aims to provide a structured way to store and retrieve these events, facilitating features like:
-
-*   **Context-Aware Search**: Allowing users to search for events based on their surrounding information or context within the note.
-*   **Full-Text Search**: Enabling comprehensive searches across the content of all recorded events.
-
-Key methods (assuming these are primary user-facing interactions, actual methods might vary based on implementation):
-
-*   `to_db()`: Persists event data to the database.
-*   `from_db()`: Loads event data from the database.
-*   `search()`: Performs search operations on the stored events.
-
-### `chirpp.postprocess.events.SchemaError`
-
-This class defines a custom exception, `SchemaError`, which is raised during the postprocessing phase, likely within the `Event` class operations. Its purpose is to signal errors related to data validation against a predefined schema. This ensures data integrity and consistency when creating or manipulating event objects.
 
 ### `chirpp.preprocess.preprocess.SectionRemover`
 
