@@ -1,43 +1,44 @@
+import os
+
+import pandas as pd
 import torch
-from sentence_transformers import SentenceTransformer, util
 from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer, AutoModelForSeq2SeqLM, AutoModel
+from chonkie import SemanticChunker
+from chonkie import Model2VecEmbeddings
+from model2vec import StaticModel
 
 
 class NoModelError(Exception):
     pass
 
-
+# need to create an openai connection to llamacpp model for summarization
 class Inference:
     """
     This will perform the inference for classification and summarization
     """
 
-    def __init__(self, classification_model, summarization_model, classification_labels,
-                 intent_model, intent_labels, substance_model, substance_labels, io_model, io_labels,
-                 location_model, location_labels, area_model, area_labels, ampm_model, ampm_labels,
-                 embedding_model, device=None):
+    def __init__(self, classification_model, summarization_model, classification_labels, intent_model, intent_labels,
+                 substance_model, substance_labels, io_model, io_labels, location_model, location_labels, area_model,
+                 area_labels, ampm_model, ampm_labels, embedding_model, device=None):
         """
 
-        :param classification_model:
-        :param summarization_model:
-        :param classification_labels:
-        :param intent_model:
-        :param intent_labels:
-        :param substance_model:
-        :param substance_labels:
-        :param io_model:
-        :param io_labels:
-        :param location_model:
-        :param location_labels:
-        :param area_model:
-        :param area_labels:
-        :param ampm_model:
-        :param ampm_labels:
-        :param embedding_model:
-        :param sd_model:
-        :param sd_labels:
-        :param tasks:
-        :param device:
+        :param classification_model: path for the classification model
+        :param summarization_model: path for the summarization model or url/port to llamacpp server that is running in the same vm
+        :param classification_labels: number of labels for the classification model
+        :param intent_model: path for the intent model
+        :param intent_labels: possible labels for the intent model
+        :param substance_model: path for the substance model
+        :param substance_labels: possible labels for the substance model
+        :param io_model: path for the inside/outside model
+        :param io_labels: possible labels for the inside/outside model
+        :param location_model: path for the location model
+        :param location_labels: possible labels for the location model
+        :param area_model: path for the area model
+        :param area_labels: possible labels for the area model
+        :param ampm_model: path for the am/pm model
+        :param ampm_labels: possible labels for the am/pm model
+        :param embedding_model: path for the embedding model
+        :param device: device cuda or cpu, if None it will use cuda if available
         """
         if device is None:
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -51,13 +52,16 @@ class Inference:
         self.substance_model = substance_model
         self.substance_labels = substance_labels
         self.io_model = io_model
+        self.io_labels = io_labels
         self.location_model = location_model
         self.location_labels = location_labels
         self.area_model = area_model
         self.area_labels = area_labels
         self.ampm_model = ampm_model
         self.ampm_labels = ampm_labels
-        self.embedding_model = embedding_model
+        self.embedding_model = StaticModel.from_pretrained("m2v_model/")
+        self.chunker = SemanticChunker(embedding_model=Model2VecEmbeddings(embedding_model), threshold="auto", chunk_size=256,
+                                       min_sentences=2, return_type="texts")
 
     def generate_pipeline(self, model_dir, labels, taks_name, task_type="classification"):
         if model_dir is None:
@@ -70,13 +74,12 @@ class Inference:
         elif task_type == "summarization":
             model = AutoModelForSeq2SeqLM.from_pretrained(model_dir, num_labels=labels)
             tokenizer = AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True)
-            pipe = pipeline("summarization", model=model_dir, tokenizer=tokenizer,
-                            device=self.device)
+            pipe = pipeline("summarization", model=model_dir, tokenizer=tokenizer, device=self.device)
         elif task_type == "embeddings":
             model = AutoModel.from_pretrained(model_dir, add_pooling_layer=False)
-            tokenizer=AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True,
-                                                    return_tensors='pt', max_length=1024)
-            pipe=(model, tokenizer)
+            tokenizer = AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True,
+                                                      return_tensors='pt', max_length=1024)
+            pipe = (model, tokenizer)
         else:
             raise ValueError("invalid task type, it can only be 'classification', 'summarization', or 'embeddings'")
         return pipe
@@ -91,8 +94,7 @@ class Inference:
         """
 
         if self.classification_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.classification_model,
-                                          labels=self.classification_labels,
+            pipe = self.generate_pipeline(model_dir=self.classification_model, labels=self.classification_labels,
                                           taks_name="classification", task_type="classification")
         else:
             raise NoModelError("no classification model provided")
@@ -123,6 +125,7 @@ class Inference:
         else:
             return report_probs
 
+    #TODO this will be a llamacpp model with a system prompot using openai api
     def summarize(self, notes, note_col="Note Text", truncation=True, max_length=128):
         """
         run summarization using the specified moden in __init
@@ -132,11 +135,9 @@ class Inference:
         :param max_length: model max length
         :return: summaries in a list
         """
-
+        #TODO
         if self.summarization_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.summarization_model,
-                                          labels=0,
-                                          taks_name="summarization", task_type="summarization")
+            pass
         else:
             raise NoModelError("There is no substance model")
 
@@ -159,9 +160,8 @@ class Inference:
         """
 
         if self.intent_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.intent_model,
-                                          labels=self.intent_labels,
-                                          taks_name="intent", task_type="classification")
+            pipe = self.generate_pipeline(model_dir=self.intent_model, labels=self.intent_labels, taks_name="intent",
+                                          task_type="classification")
         else:
             raise NoModelError("There is no intent model")
 
@@ -198,8 +198,7 @@ class Inference:
         """
 
         if self.substance_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.substance_model,
-                                          labels=self.substance_labels,
+            pipe = self.generate_pipeline(model_dir=self.substance_model, labels=self.substance_labels,
                                           taks_name="substance", task_type="classification")
         else:
             raise NoModelError("There is no substance model")
@@ -236,9 +235,7 @@ class Inference:
         :return: labels in a list
         """
         if self.io_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.io_model,
-                                          labels=2,
-                                          taks_name="io", task_type="classification")
+            pipe = self.generate_pipeline(model_dir=self.io_model, labels=2, taks_name="io", task_type="classification")
         else:
             raise NoModelError("There is no io model")
 
@@ -277,9 +274,8 @@ class Inference:
         :return:
         """
         if self.ampm_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.ampm_model,
-                                          labels=self.ampm_labels,
-                                          taks_name="ampm", task_type="classification")
+            pipe = self.generate_pipeline(model_dir=self.ampm_model, labels=self.ampm_labels, taks_name="ampm",
+                                          task_type="classification")
         else:
             raise NoModelError("There is no ampm model")
 
@@ -318,8 +314,7 @@ class Inference:
         :return:
         """
         if self.location_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.location_model,
-                                          labels=self.location_labels,
+            pipe = self.generate_pipeline(model_dir=self.location_model, labels=self.location_labels,
                                           taks_name="location", task_type="classification")
         else:
             raise NoModelError("There is no location model")
@@ -357,9 +352,8 @@ class Inference:
         :return:
         """
         if self.area_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.area_model,
-                                          labels=self.area_labels,
-                                          taks_name="area", task_type="classification")
+            pipe = self.generate_pipeline(model_dir=self.area_model, labels=self.area_labels, taks_name="area",
+                                          task_type="classification")
         else:
             raise NoModelError("There is no area model")
 
@@ -386,7 +380,18 @@ class Inference:
 
         return results
 
-    def get_embeddings(self, notes, notes_col):
+
+    def get_probs(self, database, start_date, complaint_filter):
+        probs=pd.read_sql(f"select min(probs) from visits where chief_complaint in {','.join(complaint_filter)} and arrival_date >= '{start_date}'", con=database.engine)
+        return probs[0]
+
+
+    # TODO chunk all the notes via chonkie and then push get embeddings and push to db
+    def chunk_notes(self, notes, notes_col, chunk_size=512):
+        pass
+
+    # TODO calculate embedddings for the notes, this applies to both processed notes and chunked notes.
+    def get_embeddings(self, notes):
         """
         calculate embeddings for the cleaned up note texts this will be part of the full text search and outlier
         detection methods
@@ -395,22 +400,9 @@ class Inference:
         :return: a dictionary of embeddings where key is the task and the value is the embedding
         """
         if self.embedding_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.io_model,
-                                          labels=2,
-                                          taks_name="embeddings", task_type="embeddings")
+            pipe = self.generate_pipeline(model_dir=self.io_model, labels=2, taks_name="embeddings",
+                                          task_type="embeddings")
             model = pipe[0].to(self.device)
             tokenizer = pipe[1]
         else:
             raise NoModelError("There is no embedding model")
-
-        notes=notes[notes_col].to_list()
-        tokenized=tokenizer(notes, padding=True, truncation=True, return_tensors="pt",
-                            max_length=1024)
-        tokenized=tokenized.to(self.device)
-
-        with torch.no_grad():
-            embeddings = model(**tokenized)[0][:, 0]
-
-        return embeddings.to("cpu")
-
-

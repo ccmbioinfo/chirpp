@@ -56,7 +56,8 @@ inference:
   ## normally there are 8 claasses but partner abuse is non-existent
   #TODO need to add spacy model here and refactor to make it a param
   classification_model: "./models/distilbert"
-  summarization_model: "./models/t5-small"
+  #TODO need to add llamacpp server url and port
+  summarization_model: #TODO
   distance_model: "./models/all-mpnet-base-v2"
   io_model: "./models/distilbert_io"
   intent_model: "./models/albert_xxl_intent"
@@ -64,18 +65,15 @@ inference:
   am_pm_model: "./models/distilbert_ampm"
   location_model: "./models/distilbert_location"
   area_model: "./models/distilbert_area"
-  # for some reason the huggingface thing needs to point to the model cannot save it to a folder
-  # we are doing the same thing for the spacy model and huggingface will download it and keep in cache in the
-  #vm I don't think this is a big deal since we are using the model as is and once downloaded will stay in the vm
-  embedding_model: "models/snowflake_arctic_embed_l_2"
+  embedding_model: "models/m2v_model"
 
   intent_labels: 7
-  io_labels: 2
+  io_labels: 3 # including empty
   classification_labels: 2
   substance_labels: 2
-  am_pm_labels: 2
-  location_labels: 11
-  area_labels: 16
+  am_pm_labels: 3 # including empty
+  location_labels: 12 #including empty
+  area_labels: 17 #including empty
 
   io_cutoff: 0.85
   am_pm_cutoff: 0.9
@@ -87,6 +85,7 @@ inference:
 
   intent_label_dict: { '0': '10', '1': '11', '2': '12', '3': '13', '4': '15', '5': '16', '6': '19' }
 
+#TODO need to include empty
   location_label_dict: { '0': '0', '1': '12', '2': '22', '3': '41', '4': '42', '5': '62', '6': '64',
                          '7': '68', '8': '70', '9': '82', '10': '150' }
 
@@ -135,7 +134,7 @@ post_process:
                     'depressed', 'anorexia nervosa', 'caustic', 'corrosive' ]
 
 
-  report_header: [ "CSN", "MRN", "ScrMRN", "DOB", "AGE", "SEX", "POSTAL", "ER Time", "ER Date", "ED Day", "INJ DATE", "Hr", "Min", "AM/PM",
+  report_header: [ "CSN", "MRN", "ScrMRN", "DOB", "AGE", "SEX", "POSTAL", "ER Time", "ER Date", "ER Day", "INJ DATE", "Hr", "Min", "AM/PM",
                    "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "W4P", "NO1", "BP1", "NO2",
                    "BP2", "NO3", "BP3", 'veh', 'veh p',"Notes", 'LOS', "DISP", "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
                    "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition"]

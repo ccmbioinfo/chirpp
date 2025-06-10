@@ -220,6 +220,7 @@ class DataBase:
         sheet1, sheet2=utils.prepare_report(visits, cases, patients, new_problems_df)
         return sheet1, sheet2
 
+    #TODO this is not implemented yet, we need to figure out how to update the raw data
     def update_raw(self, txt_file):
         pass
 
@@ -237,4 +238,21 @@ class DataBase:
             statement = visits_table.update().where(visits_table.c.csn == case).values(values)
             self.session.execute(statement)
             self.session.commit()
+
+    #TODO
+    def previous_visits(self, mrn):
+        """
+        get previous visits for a patient
+        :param mrn: a patient MRN
+        :return: a list of csns for previous visits an the text of the most similar visit based on phac narrative and cosine similarity
+        """
+        visits_table = self.tables["visits"]
+        patients_table = self.tables["patients"]
+
+        visits = self.session.execute(select(visits_table.c.mrn, visits_table.c.phac_narrativie).\
+                                      where(visits_table.c.mrn == mrn)).fetchall()
+
+
+        return visits.merge(patients, how="left", on="mrn")
+
 

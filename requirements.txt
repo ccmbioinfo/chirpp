@@ -6,3 +6,6 @@ sentence-transformers
 sqlalchemy
 python-dotenv
 psycopg2
+chonkie
+model2vec
+openai

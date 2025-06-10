@@ -5,7 +5,6 @@ import os
 from datetime import datetime
 
 import pandas as pd
-import numpy as np
 import yaml
 from torch.cuda import is_available
 from transformers import logging as hf_logging
@@ -20,7 +19,6 @@ from chirpp.preprocess.preprocess import SectionRemover, Preprocess
 from chirpp.preprocess.utils import deidentify
 from chirpp.database.database import DataBase
 
-#TODO this will need to migrate to the db
 parser = arg.ArgumentParser(description='Preprocess notes file for inference')
 parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
 parser.add_argument('-o', '--outname', type=str, help='Path to outputs')
@@ -28,18 +26,17 @@ parser.add_argument('-c', '--config', type=str, help='config file in yaml format
                     action="store")
 parser.add_argument('-d', '--to_database', help='Import notes to database', action="store_true")
 parser.add_argument('-e', '--to_excel', help='create an excel report', action="store_true")
-parser.add_argument('--save_embeddings', help='save embeddings to npz file', action="store_true")
 parser.add_argument('--env_file', help='env_file that contains the information about db connection', action="store")
-
-
-
 args = parser.parse_args()
 
+# load config file this contains the parameters for inference and pre/post-processing
 with open(args.config) as f:
     params = yaml.safe_load(f)
 
+# there is an environment file that contains the database connection information, this is not to be pushed to the repo
 env_values=dotenv_values(args.env_file)  
 
+# check for gpu availability
 if is_available():
     device = "cuda:0"
 else:
@@ -59,17 +56,23 @@ section_remover_for_inference = SectionRemover(lang_model="en_core_web_trf",
                                                rules_json=params["pre_process"]["section_rules"],
                                                additional_rules=additional_rules,
                                                gpu=device)
+# database connection
+engine = create_engine('postgresql+psycopg2://{}:{}@{}:{}/{}'. \
+                           format(env_values["DB_USER"],
+                                  env_values["DB_PWD"],
+                                  env_values["DB_HOST"],
+                                  env_values["DB_PORT"],
+                                  env_values["DB_NAME"]))
+
+database=DataBase(engine)
 
 # remove sections and generate inference notes these will be used for inference
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Preprocessing")
 
 preprocess = Preprocess(args.notes, params["pre_process"]["terms_to_fix"])
-
 preprocessed_notes = preprocess.read_raw_notes()
-
 additional_columns = params["pre_process"]["include_cols"] + [params["pre_process"]["line_col"]]
-
 preprocess = preprocessed_notes.get_relevant_notes(filters=params["pre_process"]["note_types"],
                                                            additional_columns=additional_columns)
 include_cols = params["pre_process"]["include_cols"]
@@ -83,13 +86,12 @@ preprocess = preprocess.merge_notes(section_remover=section_remover_for_inferenc
                                                     language_model="en_core_web_trf",
                                                     line_col=params["pre_process"]["line_col"])
 
-# TODO there probably is a better way than to create a copy
+# remove empty notes, there must be at least one triage note
 inference_notes = preprocess.merged_raw.copy()
-
 inference_notes = inference_notes[~pd.isnull(inference_notes[params["inference"]["note_col"]])].copy()
 
 
-# set up inference instance
+#TODO refactor to use openai package to llamma cpp connection
 inference = Inference(classification_model=os.path.abspath(params["inference"]["classification_model"]),
                         summarization_model=os.path.abspath(params["inference"]["summarization_model"]),
                         classification_labels=params["inference"]["classification_labels"],
@@ -106,7 +108,6 @@ inference = Inference(classification_model=os.path.abspath(params["inference"]["
                         ampm_model=os.path.abspath(params["inference"]["am_pm_model"]),
                         ampm_labels=params["inference"]["am_pm_labels"],
                         embedding_model=params["inference"]["embedding_model"],
-                        tasks=params["inference"]["embedding_tasks"],
                         device=device)
 
 # get model probabilities
@@ -118,23 +119,11 @@ probs = inference.classify(inference_notes,
 
 inference_notes["probs"] = probs
 inference_notes = inference_notes.sort_values(by=["probs"], ascending=False)
+preprocessed_notes["Arrival Date"] = pd.to_datetime(preprocessed_notes["Arrival Date"], errors="coerce")
+filter_date=preprocessed_notes["Arrival Date"].drop_duplicates().min()+pd.DateOffset(days=params["inference"]["time_delta"]).tolist()[0]
 
-complaint_filter = inference_notes["Chief Complaint"].isin(params["inference"]["pos_complaints"])
-
-# summary inference takes a long time, and I do not want to summarize all the notes. Here I will be looking at the
-# distribution of definitely positive cases (assuming they are similarly distributed with other chirpp+ cases) and
-# the % of them from the top, I will get a probability cutoff and then summarize everything that's above that prob
-
-# get all the rows that contain a "definitiely chirpp" complaint
-pos_based_on_complaint = inference_notes[complaint_filter]
-num_rows = pos_based_on_complaint.shape[0]  # get the number of cases
-
-# these are descending sorted so get the top cutoff (round the number just in case)
-row_cutoff = round(num_rows * params["inference"]["cutoff"]) - 1
-
-# get the model prob of that row, anything above that we will summarize
-prob_cutoff = pos_based_on_complaint["probs"].tolist()[row_cutoff]
-inference_notes["probs"][complaint_filter] = 1
+#prob cutoff uses the last 30 days, single day is not reliable to use, there is too much variability
+prob_cutoff = inference.get_probs(database, start_date=filter_date, complaint_filter=params["inference"]["pos_complaints"])
 
 if params["inference"]["use_chirpp"]:
     inference_notes["probs"][inference_notes[params["inference"]["chirpp_col"]] == "CHIRPP ICON"] = 1
@@ -145,6 +134,7 @@ inference_notes["is_chirpp"] = inference_notes["probs"] >= prob_cutoff
 # get summaries of positive cases
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing")
 
+#this needs to change to use lllamacpp
 summaries = inference.summarize(inference_notes,
                                   params["inference"]["note_col"],
                                   params["inference"]["truncation"],
@@ -157,8 +147,6 @@ if params['inference']['anonymize_summaries'] and not params["pre_process"]['ano
         new_summaries.append(deidentified)
     summaries=new_summaries
 
-
-
 inference_notes["PHAC Narrative"] = summaries
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying intent")
@@ -168,7 +156,6 @@ intent = inference.get_intent(notes=inference_notes[inference_notes["is_chirpp"]
                                 label_dict=params["inference"]["intent_label_dict"],
                                 cutoff=params["inference"]["intent_cutoff"],
                                 )
-
 inference_notes["intent"] = None
 inference_notes["intent"][inference_notes["is_chirpp"]] = intent
 
@@ -189,7 +176,6 @@ io=inference.get_io(notes=inference_notes[inference_notes["is_chirpp"]],
 inference_notes["io"]=None
 inference_notes["io"][(inference_notes["is_chirpp"])] = io
 
-#TODO add location, area, ampm
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying am/pm")
 
 ampm=inference.get_ampm(notes=inference_notes[inference_notes["is_chirpp"]],
@@ -219,10 +205,10 @@ inference_notes["area"]=None
 inference_notes["area"][inference_notes["is_chirpp"]] = area
 
 # no neeed to calculate embeddings if we are not going to use them.
-if args.to_database or args.save_embeddings:
-    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings")
-    embeddings=inference.get_embeddings(notes=inference_notes,
-                                          notes_col=params["inference"]["note_col"])
+
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings")
+embeddings=inference.get_embeddings(notes=inference_notes,
+                                    notes_col=params["inference"]["note_col"])
 
 
 # post processing to generate the final output
@@ -234,32 +220,19 @@ postprocess = PostProcess(preprocessed_notes.raw_notes, inference_notes, params[
 postprocess = postprocess.autofill()
 
 
-if args.to_excel:
-    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Creating Excel Report")
-    postprocess.create_report(args.outname)
-
-if args.save_embeddings:
-    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Saving note text embeddings")
-    filename=args.outname.replace(".xlsx", "")+"_embeddings.npz"
-    np.savez(filename, classification=embeddings["classification"],
-             separation=embeddings["separation"], matching=embeddings["text-matching"],
-             query=embeddings["retrieval.query"], passage=embeddings["retrieval.passage"])
+#why not
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Creating Excel Report")
+postprocess.create_report(args.outname)
 
 
-if args.to_database:
-    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Moving things to the database")
-    engine = create_engine('postgresql+psycopg2://{}:{}@{}:{}/{}'. \
-                           format(env_values["DB_USER"],
-                                  env_values["DB_PWD"], 
-                                  env_values["DB_HOST"],
-                                  env_values["DB_PORT"],
-                                  env_values["DB_NAME"]))
+#TODO this need to be refactored to always use the database
 
-    database=DataBase(engine)
-    database.process_dump(preprocess.raw_notes)
-    database.process_report(postprocess.sheet2)
-    database.import_processed_notes(inference_notes["CSN"].tolist(),
-                                    inference_notes[params["inference"]["note_col"]].tolist(),
-                                    embeddings)
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Moving things to the database")
+
+database.process_dump(preprocess.raw_notes)
+database.process_report(postprocess.sheet2)
+database.import_processed_notes(inference_notes["CSN"].tolist(),
+                                inference_notes[params["inference"]["note_col"]].tolist(),
+                                embeddings)
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Done!")
