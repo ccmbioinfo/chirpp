@@ -1,15 +1,209 @@
 import os
+import subprocess
+import time
 
 import pandas as pd
 import torch
-from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer, AutoModelForSeq2SeqLM, AutoModel
+from transformers import (pipeline, AutoModelForSequenceClassification,
+                          AutoTokenizer, AutoModelForSeq2SeqLM, AutoModel)
+import requests
 from chonkie import SemanticChunker
 from chonkie import Model2VecEmbeddings
 from model2vec import StaticModel
+import openai
+import certifi
+import jsonschema
+
+from chirpp.inference.prompts import *
 
 
 class NoModelError(Exception):
     pass
+
+
+class LlamaCppServer:
+    def __init__(self, binary_path, model_path, host = "localhost", port = 8080):
+        """Initialize Llama.cpp server manager.
+
+        Args:
+            binary_path (str): Path to llama.cpp server binary
+            model_path (str): Path to the model file
+            host (str): Server host (default: localhost)
+            port (int): Server port (default: 8080)
+        """
+        self.binary_path = binary_path
+        self.model_path = model_path
+        self.host = host
+        self.port = port
+        self.process = None
+        self.base_url = f"https://{host}:{port}"
+
+        # JSON schema for inference output validation
+        self.inference_schema = {
+            "type": "object",
+            "properties": {
+                "choices": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "message": {
+                                "type": "object",
+                                "properties": {
+                                    "content": {"type": "string"}
+                                },
+                                "required": ["content"]
+                            }
+                        },
+                        "required": ["message"]
+                    }
+                }
+            },
+            "required": ["choices"]
+        }
+
+    def prepare_user_prompt(self, prompt, note):
+        return "\n".join([prompt, note])
+
+    def start_server(self, n_ctx=4096, n_threads= 4, ssl_cert= None, ssl_key= None) -> bool:
+        """Start the Llama.cpp server with specified parameters.
+
+        Args:
+            n_ctx (int): Context size (default: 2048)
+            n_threads (int): Number of threads (default: 4)
+            ssl_cert (Optional[str]): Path to SSL certificate file
+            ssl_key (Optional[str]): Path to SSL key file
+
+        Returns:
+            bool: True if server started successfully, False otherwise
+        """
+        if self.process is not None:
+            print("Server is already running")
+            return False
+
+        cmd = [
+            self.binary_path,
+            "--model", self.model_path,
+            "--host", self.host,
+            "--port", str(self.port),
+            "--n-ctx", str(n_ctx),
+            "--threads", str(n_threads),
+            "--https"
+        ]
+
+        if ssl_cert and ssl_key:
+            cmd.extend(["--ssl-cert", ssl_cert, "--ssl-key", ssl_key])
+
+        try:
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            # Wait for server to start (with timeout)
+            timeout = 30
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    response = requests.get(f"{self.base_url}/health", verify=certifi.where())
+                    if response.status_code == 200:
+                        print("Server started successfully")
+                        return True
+                except requests.ConnectionError:
+                    time.sleep(1)
+            print("Server failed to start within timeout")
+            self.stop_server()
+            return False
+        except Exception as e:
+            print(f"Failed to start server: {str(e)}")
+            return False
+
+    def stop_server(self) -> bool:
+        """Stop the Llama.cpp server.
+
+        Returns:
+            bool: True if server stopped successfully, False otherwise
+        """
+        if self.process is None:
+            print("No server is running")
+            return False
+
+        try:
+            self.process.terminate()
+            self.process.wait(timeout=10)
+            self.process = None
+            print("Server stopped successfully")
+            return True
+        except Exception as e:
+            print(f"Failed to stop server: {str(e)}")
+            return False
+
+    def single_inference(self, note, max_tokens: int = 512, temperature: float = 0.7):
+        """Run single inference request.
+
+        Args:
+            prompt (str): Input prompt
+            max_tokens (int): Maximum tokens to generate (default: 512)
+            temperature (float): Sampling temperature (default: 0.7)
+
+        Returns:
+            Dict: Inference result with validated JSON output
+        """
+        prompt=self.prepare_user_prompt(self.user_prompt, note)
+
+        try:
+            response = self.client.chat.completions.create(
+                model="llama",  # Model name is irrelevant for local Llama.cpp server
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+            result = response.to_dict()
+
+            # Validate JSON schema
+            jsonschema.validate(instance=result, schema=self.inference_schema)
+
+            # Simplify output to {"summary_text": <text>} format
+            simplified_result = result["choices"][0]["message"]["content"]
+            return simplified_result
+
+        except (openai.APIError, jsonschema.ValidationError) as e:
+            return {"error": f"Inference failed: {str(e)}"}
+
+    def batch_inference(self, prompts, max_tokens= 90, temperature= 0.7):
+        """Run batch inference requests.
+
+        Args:
+            prompts (List[str]): List of input prompts
+            max_tokens (int): Maximum tokens to generate (default: 512)
+            temperature (float): Sampling temperature (default: 0.7)
+
+        Returns:
+            List[Dict]: List of inference results with validated JSON output
+        """
+        results = []
+        for prompt in prompts:
+            result = self.single_inference(prompt, max_tokens, temperature)
+            results.append(result)
+        return results
+
+    def is_server_running(self):
+        """Check if the server is running.
+
+        Returns:
+            bool: True if server is running, False otherwise
+        """
+        if self.process is None:
+            return False
+        try:
+            response = requests.get(f"{self.base_url}/health", verify=certifi.where())
+            return response.status_code == 200
+        except requests.ConnectionError:
+            return False
+
+
 
 # need to create an openai connection to llamacpp model for summarization
 class Inference:
@@ -63,6 +257,7 @@ class Inference:
         self.chunker = SemanticChunker(embedding_model=Model2VecEmbeddings(embedding_model), threshold="auto", chunk_size=256,
                                        min_sentences=2, return_type="texts")
 
+    #TODO summarization model needs to be a llamacpp model with a system prompt
     def generate_pipeline(self, model_dir, labels, taks_name, task_type="classification"):
         if model_dir is None:
             raise NoModelError("There is no model for {}".format(taks_name))
@@ -86,7 +281,7 @@ class Inference:
 
     def classify(self, notes, note_col="Note Text", include_labels=False):
         """
-        :param notes: pre processed notes as a pd dataframe
+        :param notes: preprocessed notes as a pd dataframe
         :param note_col: the column that contains the preprocessed notes
         :param include_labels: whether to inlcude the prediction labels, if false only the probability of being a chirpp
         is returned
