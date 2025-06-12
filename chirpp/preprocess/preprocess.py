@@ -1,9 +1,7 @@
 import os
 
 from medspacy.section_detection import SectionRule
-
 from chirpp.preprocess.utils import *
-
 
 class SectionRemover:
     """
@@ -76,7 +74,7 @@ class Preprocess:
     create 2 files one for summarization another for classification, the order of the notes will be the same in both files
     """
 
-    def __init__(self, note_file, term_to_replace):
+    def __init__(self, note_file, params, section_remover, keep_unlabelled=True, anoymize=False):
         """
         init method to get all the info needed to start preprocessing
         :param note_file: path to the excel file that is coming from EPIC
@@ -87,45 +85,27 @@ class Preprocess:
         else:
             raise FileNotFoundError("{} does not exist".format(note_file))
 
-        self.terms_to_replace = term_to_replace
-        self.raw_notes = None
+        self.params = params
+        self.section_remover = section_remover
+        self.keep_unlabelled = keep_unlabelled
+        self.anoymize = anoymize
 
-    def read_raw_notes(self):
+    def _read_raw_notes(self):
         """
-        read unprocessed Crystal notes and filter out note types specified above
+        read unprocessed Crystal notes and or epic notes there is no filtering here, that will be done later
         :param path: path for the file
         :param additional_columns: what additional columns to read from the crystal file
         :param filters: a dict describing what kind of values to keep, for example {"Note Type":"ED Provider Notes"} will
         take only ED provider notes from the Note type column
-        :return: self with raw section filled in
+        :return: dataframe with raw notes. This will be used for further processing
         """
         if self.note_file.endswith("xlsx"):
             notes = read_crystal_excel_file(path=self.note_file)
         elif self.note_file.endswith("txt"):
-            notes=process_epic_dump(self.note_file)
-        self.raw_notes = notes
-        return self
+            notes = process_epic_dump(self.note_file)
+        return notes
 
-    def get_relevant_notes(self, filters, additional_columns):
-        df = self.raw_notes
-        df = df[
-            [
-                "CSN",
-                "Arrival Time",
-                "Note Text",
-                "Note Type",
-            ] + additional_columns
-            ]
-        df["Arrival Date"] = pd.to_datetime(df["Arrival Date"])
-        for key in list(filters.keys()):
-            df = df[df[key].isin(filters[key])].copy()
-
-        self.for_preprocess = df
-        return self
-
-    def merge_notes(self, section_remover=None, include_cols=None, group_cols=["CSN"],
-                    orientation="front", keep_unlabelled=True, anonymize=True, language_model="en_core_web_trf",
-                    line_col="Note Line"):
+    def _merge_notes(self, notes, group_cols=["CSN"], line_col="Note Line"):
         """
         merge repeated notes of same visit into a single note text to be used by llms
         :param section_remover: an instance of SectionRemover
@@ -133,61 +113,74 @@ class Preprocess:
         :param group_cols: which columns to group by default is ["MRN", "Arrival Date"] this way each pandas.groupby will
         be specific to one visit of one patient, an iterable or str
         :param orientation: which way to add the extra columns, at the beginning of the note or at the end?, str
-        :return: self with merged raw filled in
+        :return: dataframe with merged notes, there will also be a processed notes column that is the merge of triage and
+        provider notes with sections removed and terms replaced
         """
-        notes_grouped = self.for_preprocess.groupby(group_cols)
+        notes_grouped = notes.groupby(group_cols)
 
         merged_raw = []
-        if include_cols is not None:  # to make sure that they are stored at the end, they do not change with the row
-            # there will always be a single value
-            group_cols = group_cols + include_cols
-
         for _, group in notes_grouped:
             df = group[group_cols].drop_duplicates()
             # I want to get the first files note at the top because I think that is more likely to contain the description
             # of what happened to the patient
 
-            note_text = " ".join(
-                [str(x) for x in
-                 group.sort_values(by=["Note Type", line_col], ignore_index=True)["Note Text"].tolist()])
+            note_text = " ".join([str(x) for x in group.sort_values(by=["Note Type", line_col], ignore_index=True)[
+                "Note Text"].tolist()])
 
             note_text = remove_extra_spaces(note_text)
-
             if self.terms_to_replace is not None:
-                note_text = replace_terms(note_text, self.terms_to_replace)
-
-            if section_remover is not None:
-                note_text = section_remover.remove_sections(note_text, keep_unlabelled)
-            # add them one by one so there is more flexibility but at the cost of speed, these columns are things like
-            # diagnoses, chief complaints etc. They are included as long as they are strings
-            if include_cols is not None:
-                for col in include_cols:
-                    to_include = group[col].drop_duplicates().tolist()
-                    if type(to_include) != str:
-                        continue
-                    else:
-                        if orientation == "front":
-                            note_text = " ".join([to_include, note_text])
-                        elif orientation == "back":
-                            note_text = " ".join([note_text, to_include])
-                        else:
-                            raise ValueError("orientation can be either front or back")
-
-            if anonymize:
-                name = df["Patient Name"].drop_duplicates().to_list()
-
-                note_text = deidentify(note_text, language_model, name)
+                note_text = replace_terms(note_text, self.params['terms_to_replace'])
 
             df["Note Text"] = note_text
             merged_raw.append(df)
         merged_raw = pd.concat(merged_raw)
-        # TODO need to make this less hacky
-        merged_raw = merged_raw[~merged_raw[["MRN", "Arrival Date"]].duplicated()]
+        merged_raw = merged_raw[~merged_raw[["CSN"]].duplicated()]
+        return merged_raw
 
-        self.merged_raw = merged_raw
-        return self
+    def _get_relevant_notes(self, merged_notes, note_types, group_cols=["CSN"]):
+        """
+        get relevant notes from the dataframe, this is used to filter out notes that are not relevant for the task
+        :param notes: dataframe with raw notes
+        :param note_types: list of note types to keep, if None will keep all note types
+        :return: dataframe with relevant notes
+        """
+        for_preprocessing = merged_notes[merged_notes["Note Type"].isin(note_types)]
+        for_preprocessing = for_preprocessing.groupby(group_cols)
+        relevant_notes = []
+        for csn, group in for_preprocessing:
+            notes = " ".join(group["Note Text"].tolist())
+            relevant_notes.append({"CSN": csn, "Note Text": notes})
 
+        relevant_notes = pd.DataFrame(relevant_notes)
+        return relevant_notes
 
+    def _remove_sections(self, relevant_notes, raw_notes, section_remover, keep_unlabelled=True, anonymize=False, ):
+        processed_notes = []
+        for csn, note in zip(relevant_notes["CSN"], relevant_notes["Note Text"]):
+            note_text = section_remover.remove_sections(note, keep_unlabelled)
+            processed_notes.append({"CSN": csn, "processed_notes": note_text})
 
+        processed_notes = pd.DataFrame(processed_notes)
+        if anonymize:
+            names_removed = []
+            processed_notes.merge(raw_notes[["CSN", "Patient Name"]], how="left", on="CSN")
+            for name, notes in zip(processed_notes["Patient Name"].tolist(), processed_notes["processed_notes"].tolist()):
+                notes = deidentify(notes, section_remover.nlp, name)
+                names_removed.append(notes)
+            processed_notes["processed_notes"] = names_removed
 
+        return processed_notes
 
+    def preprocess_pipeline(self):
+        """
+        run the whole pipeline of preprocessing, this will read the notes, merge them, get relevant notes, remove sections and
+        return the processed notes
+        :return: dataframe with processed notes and raw notes
+        """
+        raw_notes = self._read_raw_notes()
+        merged_notes = self._merge_notes(raw_notes, self.params["group_cols"], self.params["line_col"])
+        relevant_notes = self._get_relevant_notes(merged_notes, self.params["note_types"], self.params["group_cols"])
+        processed_notes = self._remove_sections(relevant_notes, raw_notes, self.section_remover, self.keep_unlabelled,
+                                               self.anonymize)
+        merged_notes=merged_notes.merge(processed_notes, how="left", on="CSN")
+        return merged_notes

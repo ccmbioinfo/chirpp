@@ -29,6 +29,8 @@ parser.add_argument('-e', '--to_excel', help='create an excel report', action="s
 parser.add_argument('--env_file', help='env_file that contains the information about db connection', action="store")
 args = parser.parse_args()
 
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Gathering requirements")
+
 # load config file this contains the parameters for inference and pre/post-processing
 with open(args.config) as f:
     params = yaml.safe_load(f)
@@ -48,15 +50,7 @@ if "additional_rules" in list(params["pre_process"].keys()):
 else:
     additional_rules = None
 
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Section remover")
-
-section_remover_for_inference = SectionRemover(lang_model="en_core_web_trf",
-                                               remove_sections=params["pre_process"]["remove_sections"],
-                                               keep_sections=params["pre_process"]["inference_sections"],
-                                               rules_json=params["pre_process"]["section_rules"],
-                                               additional_rules=additional_rules,
-                                               gpu=device)
-# database connection
+# database connection this is essential for rag, non-db connections will not be supported
 engine = create_engine('postgresql+psycopg2://{}:{}@{}:{}/{}'. \
                            format(env_values["DB_USER"],
                                   env_values["DB_PWD"],
@@ -66,28 +60,19 @@ engine = create_engine('postgresql+psycopg2://{}:{}@{}:{}/{}'. \
 
 database=DataBase(engine)
 
-# remove sections and generate inference notes these will be used for inference
-
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Preprocessing")
 
-preprocess = Preprocess(args.notes, params["pre_process"]["terms_to_fix"])
-preprocessed_notes = preprocess.read_raw_notes()
-additional_columns = params["pre_process"]["include_cols"] + [params["pre_process"]["line_col"]]
-preprocess = preprocessed_notes.get_relevant_notes(filters=params["pre_process"]["note_types"],
-                                                           additional_columns=additional_columns)
-include_cols = params["pre_process"]["include_cols"]
-include_cols.append(params["pre_process"]["line_col"])
-preprocess = preprocess.merge_notes(section_remover=section_remover_for_inference,
-                                                    include_cols=include_cols,
-                                                    group_cols=params["pre_process"]["group_cols"],
-                                                    orientation=params["pre_process"]["orientation"],
-                                                    keep_unlabelled=params["pre_process"]["keep_unlabelled"],
-                                                    anonymize=params["pre_process"]["anonymize"],
-                                                    language_model="en_core_web_trf",
-                                                    line_col=params["pre_process"]["line_col"])
+section_remover_for_inference = SectionRemover(lang_model="en_core_web_trf",
+                                               remove_sections=params["pre_process"]["remove_sections"],
+                                               keep_sections=params["pre_process"]["inference_sections"],
+                                               rules_json=params["pre_process"]["section_rules"],
+                                               additional_rules=additional_rules,
+                                               gpu=device)
+preprocess=Preprocess(args.notes, params["preprocess"], section_remover_for_inference)
+merged_notes= preprocess.preprocess_pipeline()
 
 # remove empty notes, there must be at least one triage note
-inference_notes = preprocess.merged_raw.copy()
+inference_notes = merged_notes.copy()
 inference_notes = inference_notes[~pd.isnull(inference_notes[params["inference"]["note_col"]])].copy()
 
 
@@ -118,6 +103,7 @@ probs = inference.classify(inference_notes,
                              params["inference"]["include_labels"])
 
 inference_notes["probs"] = probs
+
 inference_notes = inference_notes.sort_values(by=["probs"], ascending=False)
 preprocessed_notes["Arrival Date"] = pd.to_datetime(preprocessed_notes["Arrival Date"], errors="coerce")
 filter_date=preprocessed_notes["Arrival Date"].drop_duplicates().min()+pd.DateOffset(days=params["inference"]["time_delta"]).tolist()[0]

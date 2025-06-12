@@ -1,5 +1,5 @@
 ##### PRE PROCESS
-pre_process:
+preprocess:
   #TODO this needs to be implemented as a param
   epic_dump_delim: "|"
   inference_sections: [ "history_of_present_illness", "observation_and_plan", "chief_complaint", "problem_list", "diagnosis" ]
@@ -16,11 +16,10 @@ pre_process:
     Note Type: [ "ED Provider Notes", "ED Triage Notes" ]
   include_cols: [ "MRN", "Arrival Date", "Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "LOS" ]
   group_cols: [ "CSN" ]
-  orientation: "front"
   keep_unlabelled: true
   anonymize: false
 
-  terms_to_fix: { 'hx': 'history of', '#': 'fracture', 'c/o': 'complaining of', 'f/u': 'follow up',
+  terms_to_replace: { 'hx': 'history of', '#': 'fracture', 'c/o': 'complaining of', 'f/u': 'follow up',
                   'fu': 'follow up', 'w': 'with', 'ortho': 'orthopaedics', 'psych': 'psychiatry', 'cardio': 'cardiology',
                   'ophtho': 'ophthalmology', 'ENT': 'otolaryngology', 'plastics': 'plastic surgery', 'physio': 'physiotherapy',
                   'heme': 'hematology', 'rx': 'prescription', 'tx': 'treatment', 'd': 'days ago', 'mo': 'months', 'lac': 'laceration',

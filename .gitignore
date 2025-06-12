@@ -12,3 +12,8 @@ to_run
 chirpp/models
 .env
 backup
+build
+chirpp.egg-info
+*.xlsx
+*__pycache__
+
