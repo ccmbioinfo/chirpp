@@ -1,9 +1,11 @@
+import uuid
+
 from sqlalchemy import (
     Column, ForeignKey, Integer, String, DateTime, 
     Date, Text, Float, Time, types, Computed, Index, Boolean,
     JSON
 )
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import declarative_base
 
 from pgvector.sqlalchemy import Vector
@@ -44,6 +46,7 @@ class Visits(Base):
     address=Column(String)
     city = Column(String)
     province = Column(String)
+    probs=Column(Float)
     sk_narrative_vector = Column(TSVector(), Computed(
         "to_tsvector('english', sk_narrative)",
         persisted=True))
@@ -166,6 +169,7 @@ class CustomLabelVisits(Base):
 class Users(Base):
     __tablename__="users"
     id=Column(Integer, autoincrement=True, primary_key=True, index=True)
+    uuid=Column(UUID(as_uuid=True), default=uuid.uuid4, unique=True, nullable=False)
     first_name=Column(String)
     last_name=Column(String)
     email=Column(String)
