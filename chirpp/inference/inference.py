@@ -2,27 +2,28 @@ import os
 import subprocess
 import time
 
-import pandas as pd
-import torch
 from transformers import (pipeline, AutoModelForSequenceClassification,
-                          AutoTokenizer, AutoModelForSeq2SeqLM, AutoModel)
-import requests
+                          AutoTokenizer)
+
+#TODO needs it's own class to be passed to inference, this will do chunking and embedding
 from chonkie import SemanticChunker
 from chonkie import Model2VecEmbeddings
 from model2vec import StaticModel
+
+
 import openai
 import certifi
+import requests
 import jsonschema
+from tqdm import tqdm
 
-from chirpp.inference.prompts import *
 
 
 class NoModelError(Exception):
     pass
 
-
 class LlamaCppServer:
-    def __init__(self, binary_path, model_path, host = "localhost", port = 8080):
+    def __init__(self, binary_path, model_dict=None, host = "localhost", port = 8080):
         """Initialize Llama.cpp server manager.
 
         Args:
@@ -31,12 +32,22 @@ class LlamaCppServer:
             host (str): Server host (default: localhost)
             port (int): Server port (default: 8080)
         """
+        self.current_directory = os.path.abspath(os.getcwd())
         self.binary_path = binary_path
-        self.model_path = model_path
+        if not isinstance(model_dict, dict):
+            raise ValueError("model_dict must be a dictionary.Describin the gguf path and its alias")
+        for alias, path in model_dict.items():
+            self.model_cmd=[]
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"Model file not found for alias '{alias}': {path}")
+            else:
+                self.model_cmd.extend(["-m", os.path.abspath(path), "--alias", alias])
+
         self.host = host
         self.port = port
         self.process = None
-        self.base_url = f"https://{host}:{port}"
+        self.base_url = "{}://{}:{}/"
+        os.chdir(os.path.abspath(self.binary_path))
 
         # JSON schema for inference output validation
         self.inference_schema = {
@@ -82,17 +93,19 @@ class LlamaCppServer:
             return False
 
         cmd = [
-            self.binary_path,
-            "--model", self.model_path,
+            "./llama-server",
+            *self.model_cmd,  # Unpack model command arguments
             "--host", self.host,
             "--port", str(self.port),
-            "--n-ctx", str(n_ctx),
+            "--ctx-size", str(n_ctx),
             "--threads", str(n_threads),
-            "--https"
         ]
 
         if ssl_cert and ssl_key:
             cmd.extend(["--ssl-cert", ssl_cert, "--ssl-key", ssl_key])
+            protocol="https"
+        else:
+            protocol="http"
 
         try:
             self.process = subprocess.Popen(
@@ -107,16 +120,20 @@ class LlamaCppServer:
             start_time = time.time()
             while time.time() - start_time < timeout:
                 try:
-                    response = requests.get(f"{self.base_url}/health", verify=certifi.where())
+                    self.url=self.base_url.format(protocol, self.host, self.port)
+                    response = requests.get(f"{self.url}/health", verify=certifi.where())
                     if response.status_code == 200:
                         print("Server started successfully")
+                        os.chdir(self.current_directory)
                         return True
                 except requests.ConnectionError:
                     time.sleep(1)
             print("Server failed to start within timeout")
             self.stop_server()
+            os.chdir(self.current_directory)
             return False
         except Exception as e:
+            os.chdir(self.current_directory)
             print(f"Failed to start server: {str(e)}")
             return False
 
@@ -140,7 +157,7 @@ class LlamaCppServer:
             print(f"Failed to stop server: {str(e)}")
             return False
 
-    def single_inference(self, note, max_tokens: int = 512, temperature: float = 0.7):
+    def single_inference(self, model, sys_prompt, prompt, note, max_tokens: int = 512, temperature: float = 0.7):
         """Run single inference request.
 
         Args:
@@ -151,14 +168,23 @@ class LlamaCppServer:
         Returns:
             Dict: Inference result with validated JSON output
         """
-        prompt=self.prepare_user_prompt(self.user_prompt, note)
+        user_prompt=self.prepare_user_prompt(prompt, note)
+        messages=[
+                    {"role":"system", "content":sys_prompt},
+                    {"role": "user", "content": user_prompt}
+        ]
+        client=openai.OpenAI(
+            base_url=self.url,
+            api_key="key" # not needed for localhost
+        )
 
         try:
-            response = self.client.chat.completions.create(
-                model="llama",  # Model name is irrelevant for local Llama.cpp server
-                messages=[{"role": "user", "content": prompt}],
+            response = client.chat.completions.create(
+                model=model,  # Model name is irrelevant for local Llama.cpp server
+                messages=messages,
                 max_tokens=max_tokens,
-                temperature=temperature
+                temperature=temperature,
+                stream=False
             )
             result = response.to_dict()
 
@@ -172,7 +198,7 @@ class LlamaCppServer:
         except (openai.APIError, jsonschema.ValidationError) as e:
             return {"error": f"Inference failed: {str(e)}"}
 
-    def batch_inference(self, prompts, max_tokens= 90, temperature= 0.7):
+    def batch_inference(self, sys_prompt, prompt, notes, max_tokens= 90, temperature= 0.7):
         """Run batch inference requests.
 
         Args:
@@ -184,8 +210,8 @@ class LlamaCppServer:
             List[Dict]: List of inference results with validated JSON output
         """
         results = []
-        for prompt in prompts:
-            result = self.single_inference(prompt, max_tokens, temperature)
+        for note in tqdm(notes, unit=" Notes", desc="Processing: "):
+            result = self.single_inference(sys_prompt, prompt, note, max_tokens, temperature)
             results.append(result)
         return results
 
@@ -204,165 +230,31 @@ class LlamaCppServer:
             return False
 
 
-
-# need to create an openai connection to llamacpp model for summarization
 class Inference:
-    """
-    This will perform the inference for classification and summarization
-    """
+    def __init__(self, config, device="cpu", server: LlamaCppServer = None):
+        """Initialize Inference class with configuration.
 
-    def __init__(self, classification_model, summarization_model, classification_labels, intent_model, intent_labels,
-                 substance_model, substance_labels, io_model, io_labels, location_model, location_labels, area_model,
-                 area_labels, ampm_model, ampm_labels, embedding_model, device=None):
+        Args:
+            config (dict): Configuration dictionary
         """
+        self.config = config
+        self.server = server
+        self.pipeline_device= device
 
-        :param classification_model: path for the classification model
-        :param summarization_model: path for the summarization model or url/port to llamacpp server that is running in the same vm
-        :param classification_labels: number of labels for the classification model
-        :param intent_model: path for the intent model
-        :param intent_labels: possible labels for the intent model
-        :param substance_model: path for the substance model
-        :param substance_labels: possible labels for the substance model
-        :param io_model: path for the inside/outside model
-        :param io_labels: possible labels for the inside/outside model
-        :param location_model: path for the location model
-        :param location_labels: possible labels for the location model
-        :param area_model: path for the area model
-        :param area_labels: possible labels for the area model
-        :param ampm_model: path for the am/pm model
-        :param ampm_labels: possible labels for the am/pm model
-        :param embedding_model: path for the embedding model
-        :param device: device cuda or cpu, if None it will use cuda if available
-        """
-        if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        else:
-            self.device = device
-        self.classification_model = classification_model
-        self.summarization_model = summarization_model
-        self.classification_labels = classification_labels
-        self.intent_model = intent_model
-        self.intent_labels = intent_labels
-        self.substance_model = substance_model
-        self.substance_labels = substance_labels
-        self.io_model = io_model
-        self.io_labels = io_labels
-        self.location_model = location_model
-        self.location_labels = location_labels
-        self.area_model = area_model
-        self.area_labels = area_labels
-        self.ampm_model = ampm_model
-        self.ampm_labels = ampm_labels
-        self.embedding_model = StaticModel.from_pretrained("m2v_model/")
-        self.chunker = SemanticChunker(embedding_model=Model2VecEmbeddings(embedding_model), threshold="auto", chunk_size=256,
-                                       min_sentences=2, return_type="texts")
 
-    #TODO summarization model needs to be a llamacpp model with a system prompt
-    def generate_pipeline(self, model_dir, labels, taks_name, task_type="classification"):
-        if model_dir is None:
-            raise NoModelError("There is no model for {}".format(taks_name))
-
-        if task_type == "classification":
-            model = AutoModelForSequenceClassification.from_pretrained(model_dir)
-            tokenizer = AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True)
-            pipe = pipeline("text-classification", model=model_dir, tokenizer=tokenizer, device=self.device)
-        elif task_type == "summarization":
-            model = AutoModelForSeq2SeqLM.from_pretrained(model_dir, num_labels=labels)
-            tokenizer = AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True)
-            pipe = pipeline("summarization", model=model_dir, tokenizer=tokenizer, device=self.device)
-        elif task_type == "embeddings":
-            model = AutoModel.from_pretrained(model_dir, add_pooling_layer=False)
-            tokenizer = AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True,
-                                                      return_tensors='pt', max_length=1024)
-            pipe = (model, tokenizer)
-        else:
-            raise ValueError("invalid task type, it can only be 'classification', 'summarization', or 'embeddings'")
+    def load_pipeline(self, model, num_labels=None):
+        """Load classification pipeline."""
+        if model is None:
+            raise NoModelError("No model provided for inference pipeline.")
+        model = AutoModelForSequenceClassification.from_pretrained(model, num_labels=num_labels)
+        tokenizer = AutoTokenizer.from_pretrained(model, padding="max_length", truncation=True)
+        pipe = pipeline("text-classification", model=model, tokenizer=tokenizer, device=self.device)
         return pipe
 
-    def classify(self, notes, note_col="Note Text", include_labels=False):
-        """
-        :param notes: preprocessed notes as a pd dataframe
-        :param note_col: the column that contains the preprocessed notes
-        :param include_labels: whether to inlcude the prediction labels, if false only the probability of being a chirpp
-        is returned
-        :return: model probabilities of being a chirpp case
-        """
-
-        if self.classification_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.classification_model, labels=self.classification_labels,
-                                          taks_name="classification", task_type="classification")
-        else:
-            raise NoModelError("no classification model provided")
-
-        to_infer = notes[~notes[note_col].isnull()][note_col].copy().to_list()
-        labels = pipe(to_infer, padding=True, truncation=True)
-
-        edited_labels = []
-        for lab in labels:
-            edited = lab["label"]
-            edited = edited.replace("LABEL_", "")
-            edited = int(edited)
-            edited_labels.append(edited)
-
-        scores = []
-        for lab in labels:
-            scores.append(lab["score"])
-
-        report_probs = []
-        for label, score in zip(edited_labels, scores):
-            if label == 0:
-                report_probs.append(1 - score)
-            else:
-                report_probs.append(score)
-
-        if include_labels:
-            return edited_labels, report_probs
-        else:
-            return report_probs
-
-    #TODO this will be a llamacpp model with a system prompot using openai api
-    def summarize(self, notes, note_col="Note Text", truncation=True, max_length=128):
-        """
-        run summarization using the specified moden in __init
-        :param notes: notes, dataframe
-        :param note_col: a column within the dataframe to summarize ideally this is the pre-processed notes
-        :param truncation: whether to trunctate the texts if its longer than the model max
-        :param max_length: model max length
-        :return: summaries in a list
-        """
-        #TODO
-        if self.summarization_model is not None:
-            pass
-        else:
-            raise NoModelError("There is no substance model")
-
-        to_infer = [str(note) for note in notes[note_col].to_list()]
-        summaries = pipe(to_infer, truncation=truncation, max_length=max_length)
-        summary_texts = []
-        for summary in summaries:
-            summary_texts.append(summary["summary_text"])
-
-        return summary_texts
-
-    def get_intent(self, notes, notes_col, label_dict, cutoff=0.8):
-        """
-        run intent classification with the specified model in __init__
-        :param notes: dataframe with the notes
-        :param notes_col: column where the notes are ideally these are pre-processed
-        :param label_dict: label dict to look up chirpp codes to translate from torch labels
-        :param cutoff: the model confidence cutoff, anything below that will be left blank
-        :return: labels for intent in a list
-        """
-
-        if self.intent_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.intent_model, labels=self.intent_labels, taks_name="intent",
-                                          task_type="classification")
-        else:
-            raise NoModelError("There is no intent model")
-
-        to_infer = notes[notes_col].to_list()
-        labels = pipe(to_infer, padding=True, truncation=True)
-
+    def run_pipeline(self, pipeline, notes, label_dict=None, cutoff=0.8):
+        num_labels=len(label_dict.keys()) if label_dict else None
+        pipe = self.load_pipeline(pipeline, notes, num_labels)
+        labels = pipe(notes)
         edited_labels = []
         for lab in labels:
             edited = lab["label"]
@@ -383,221 +275,15 @@ class Inference:
 
         return results
 
-    def get_substance(self, notes, notes_col, cutoff=0.9):
-        """
-        determine whether substances are mentioned
-        :param notes: same as abvoe
-        :param notes_col: same as above
-        :param cutoff: same as above
-        :return: a list of labels
-        """
 
-        if self.substance_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.substance_model, labels=self.substance_labels,
-                                          taks_name="substance", task_type="classification")
-        else:
-            raise NoModelError("There is no substance model")
-
-        to_infer = notes[notes_col].to_list()
-        labels = pipe(to_infer, padding=True, truncation=True)
-
-        edited_labels = []
-        for lab in labels:
-            edited = lab["label"]
-            edited = edited.replace("LABEL_", "")
-            edited = int(edited) + 1
-            edited_labels.append(edited)
-
-        scores = []
-        for lab in labels:
-            scores.append(lab["score"])
-
-        results = []
-        for lab, scr in zip(edited_labels, scores):
-            if scr >= cutoff:
-                results.append(lab)
-            else:
-                results.append(None)
-
-        return results
-
-    def get_io(self, notes, notes_col, cutoff=0.9):
-        """
-        determine whether the incident happened inside or outside
-        :param notes: same as above
-        :param notes_col: same as above
-        :param cutoff: same as above
-        :return: labels in a list
-        """
-        if self.io_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.io_model, labels=2, taks_name="io", task_type="classification")
-        else:
-            raise NoModelError("There is no io model")
-
-        to_infer = notes[notes_col].to_list()
-        labels = pipe(to_infer, padding=True, truncation=True)
-
-        edited_labels = []
-        for lab in labels:
-            edited = lab["label"]
-            edited = edited.replace("LABEL_", "")
-            if edited == "0":
-                edited = "I"
-            else:
-                edited = "O"
-            edited_labels.append(edited)
-
-        scores = []
-        for lab in labels:
-            scores.append(lab["score"])
-
-        results = []
-        for lab, scr in zip(edited_labels, scores):
-            if scr >= cutoff:
-                results.append(lab)
-            else:
-                results.append(None)
-
-        return results
-
-    def get_ampm(self, notes, notes_col, cutoff=0.9):
-        """
-        
-        :param notes:
-        :param notes_col:
-        :param cutoff:
-        :return:
-        """
-        if self.ampm_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.ampm_model, labels=self.ampm_labels, taks_name="ampm",
-                                          task_type="classification")
-        else:
-            raise NoModelError("There is no ampm model")
-
-        to_infer = notes[notes_col].to_list()
-        labels = pipe(to_infer, padding=True, truncation=True)
-        edited_labels = []
-        for lab in labels:
-            edited = lab["label"]
-            edited = edited.replace("LABEL_", "")
-            if edited == "0":
-                edited = "a"
-            else:
-                edited = "p"
-            edited_labels.append(edited)
-
-        scores = []
-        for lab in labels:
-            scores.append(lab["score"])
-
-        results = []
-        for lab, scr in zip(edited_labels, scores):
-            if scr >= cutoff:
-                results.append(lab)
-            else:
-                results.append(None)
-
-        return results
-
-    def get_location(self, notes, notes_col, label_dict, cutoff=0.85):
-        """
-
-        :param notes:
-        :param notes_col:
-        :param label_dict:
-        :param cutoff:
-        :return:
-        """
-        if self.location_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.location_model, labels=self.location_labels,
-                                          taks_name="location", task_type="classification")
-        else:
-            raise NoModelError("There is no location model")
-
-        to_infer = notes[notes_col].to_list()
-        labels = pipe(to_infer, padding=True, truncation=True)
-
-        edited_labels = []
-        for lab in labels:
-            edited = lab["label"]
-            edited = edited.replace("LABEL_", "")
-            actual = label_dict[edited]
-            edited_labels.append(int(actual))
-
-        scores = []
-        for lab in labels:
-            scores.append(lab["score"])
-
-        results = []
-        for lab, scr in zip(edited_labels, scores):
-            if scr >= cutoff and lab != '0':
-                results.append(lab)
-            else:
-                results.append(None)
-
-        return results
-
-    def get_area(self, notes, notes_col, label_dict, cutoff=0.85):
-        """
-
-        :param notes:
-        :param notes_col:
-        :param label_dict:
-        :param cutoff:
-        :return:
-        """
-        if self.area_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.area_model, labels=self.area_labels, taks_name="area",
-                                          task_type="classification")
-        else:
-            raise NoModelError("There is no area model")
-
-        to_infer = notes[notes_col].to_list()
-        labels = pipe(to_infer, padding=True, truncation=True)
-
-        edited_labels = []
-        for lab in labels:
-            edited = lab["label"]
-            edited = edited.replace("LABEL_", "")
-            actual = label_dict[edited]
-            edited_labels.append(int(actual))
-
-        scores = []
-        for lab in labels:
-            scores.append(lab["score"])
-
-        results = []
-        for lab, scr in zip(edited_labels, scores):
-            if scr >= cutoff and lab != '0':
-                results.append(lab)
-            else:
-                results.append(None)
-
-        return results
-
-
-    def get_probs(self, database, start_date, complaint_filter):
-        probs=pd.read_sql(f"select min(probs) from visits where chief_complaint in {','.join(complaint_filter)} and arrival_date >= '{start_date}'", con=database.engine)
-        return probs[0]
-
-
-    # TODO chunk all the notes via chonkie and then push get embeddings and push to db
-    def chunk_notes(self, notes, notes_col, chunk_size=512):
+    def server_inference(self, params):
         pass
 
-    # TODO calculate embedddings for the notes, this applies to both processed notes and chunked notes.
+    def chunk_notes(self):
+        pass
+
     def get_embeddings(self, notes):
-        """
-        calculate embeddings for the cleaned up note texts this will be part of the full text search and outlier
-        detection methods
-        :param notes_col: notes, sames as above
-        :param tasks: list of tasks to be passed to the model, if None just plain embeddings will be returned
-        :return: a dictionary of embeddings where key is the task and the value is the embedding
-        """
-        if self.embedding_model is not None:
-            pipe = self.generate_pipeline(model_dir=self.io_model, labels=2, taks_name="embeddings",
-                                          task_type="embeddings")
-            model = pipe[0].to(self.device)
-            tokenizer = pipe[1]
-        else:
-            raise NoModelError("There is no embedding model")
+        pass
+
+
+
