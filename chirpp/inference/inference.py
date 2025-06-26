@@ -1,15 +1,15 @@
 import os
 import subprocess
 import time
+import re
 
 from transformers import (pipeline, AutoModelForSequenceClassification,
                           AutoTokenizer)
 
-#TODO needs it's own class to be passed to inference, this will do chunking and embedding
+import pandas as pd
 from chonkie import SemanticChunker
 from chonkie import Model2VecEmbeddings
 from model2vec import StaticModel
-
 
 import openai
 import certifi
@@ -17,13 +17,11 @@ import requests
 import jsonschema
 from tqdm import tqdm
 
-
-
 class NoModelError(Exception):
     pass
 
 class LlamaCppServer:
-    def __init__(self, binary_path, model_dict=None, host = "localhost", port = 8080):
+    def __init__(self, binary_path, model_dict, host = "localhost", port = 8080):
         """Initialize Llama.cpp server manager.
 
         Args:
@@ -34,15 +32,7 @@ class LlamaCppServer:
         """
         self.current_directory = os.path.abspath(os.getcwd())
         self.binary_path = binary_path
-        if not isinstance(model_dict, dict):
-            raise ValueError("model_dict must be a dictionary.Describin the gguf path and its alias")
-        for alias, path in model_dict.items():
-            self.model_cmd=[]
-            if not os.path.exists(path):
-                raise FileNotFoundError(f"Model file not found for alias '{alias}': {path}")
-            else:
-                self.model_cmd.extend(["-m", os.path.abspath(path), "--alias", alias])
-
+        self.model_dict = model_dict
         self.host = host
         self.port = port
         self.process = None
@@ -76,7 +66,7 @@ class LlamaCppServer:
     def prepare_user_prompt(self, prompt, note):
         return "\n".join([prompt, note])
 
-    def start_server(self, n_ctx=4096, n_threads= 4, ssl_cert= None, ssl_key= None) -> bool:
+    def start_server(self, model, n_ctx=4096, n_threads= 4, ssl_cert= None, ssl_key= None) -> bool:
         """Start the Llama.cpp server with specified parameters.
 
         Args:
@@ -92,9 +82,11 @@ class LlamaCppServer:
             print("Server is already running")
             return False
 
+        model_cmd=["-m", os.path.abspath(self.model_dict[model]["model"]), "--alias", model]
+
         cmd = [
             "./llama-server",
-            *self.model_cmd,  # Unpack model command arguments
+            *model_cmd,  # Unpack model command arguments
             "--host", self.host,
             "--port", str(self.port),
             "--ctx-size", str(n_ctx),
@@ -198,7 +190,7 @@ class LlamaCppServer:
         except (openai.APIError, jsonschema.ValidationError) as e:
             return {"error": f"Inference failed: {str(e)}"}
 
-    def batch_inference(self, sys_prompt, prompt, notes, max_tokens= 90, temperature= 0.7):
+    def batch_inference(self, model, sys_prompt, prompt, notes, max_tokens= 90, temperature= 0.7):
         """Run batch inference requests.
 
         Args:
@@ -211,7 +203,7 @@ class LlamaCppServer:
         """
         results = []
         for note in tqdm(notes, unit=" Notes", desc="Processing: "):
-            result = self.single_inference(sys_prompt, prompt, note, max_tokens, temperature)
+            result = self.single_inference(model, sys_prompt, prompt, note, max_tokens, temperature)
             results.append(result)
         return results
 
@@ -221,25 +213,79 @@ class LlamaCppServer:
         Returns:
             bool: True if server is running, False otherwise
         """
-        if self.process is None:
-            return False
-        try:
-            response = requests.get(f"{self.base_url}/health", verify=certifi.where())
-            return response.status_code == 200
-        except requests.ConnectionError:
-            return False
+
+        response = requests.get(f"{self.base_url}/health", verify=certifi.where())
+        return response.status_code == 200
+
+    def process_results(self, output_list, out_type=str, summary=False):
+        """
+        the server returns a bunch of stuff, and only the first portion is the actual output with the desired information and
+        structure, I will need to mactch the brackets and clean the ouptut.
+        :param output_list: results from the sever
+        :param out_type: this will remain string for now, but can be changed to int or float if needed
+        :return: a list of dictionaries with cleaned output
+        """
+        cleaned_output = []
+        for item in output_list:
+            if summary:
+                clean={"summary":item.replace("{'summary':", "").split("}")[0]}
+            else:
+                match= re.findall(r"\{[^}]*\}", item)[0]
+                match=match.replace('"', "").replace("'", "").replace("\'", "").\
+                    replace("{", "").replace("}", "").split("\n") #this gives a list of strings
+                clean={}
+                for out in match:
+                    out=out.split(":")
+                    if out[1]=="N\\A":
+                        out[1]=""
+                    clean[out[0]]=out_type(out[1].replace(",", "").replace(".0", ""))
+            cleaned_output.append(clean)
+        return cleaned_output
+
+
+class SemanticChunking:
+    def __init__(self, chunking_model, embedding_model, chunk_size, min_sentences, threshold):
+        """
+
+        :param chunking_mode:
+        :param embedding_model:
+        """
+        self.chunking_model = Model2VecEmbeddings(chunking_model)
+        self.embedding_model = StaticModel.from_pretrained(embedding_model)
+        self.chunk_size=chunk_size
+        self.min_sentence=min_sentences
+        self.threshold=threshold
+
+    def chunk_notes(self, notes):
+        """Chunk notes into semantic segments."""
+        chunker = SemanticChunker(
+            embedding_model=self.chunking_model,
+            threshold=self.threshold,  # Similarity threshold (0-1) or (1-100) or "auto"
+            chunk_size=self.chunk_size,  # Maximum tokens per chunk
+            min_sentences=self.min_sentences,  # Initial sentences per chunk,
+            return_type="texts"  # return a list of strings
+        )
+        chunks = chunker.chunk(notes) #this is a list of list of strings
+        return chunks
+
+    def get_embeddings(self, chunks):
+        embeddings = []
+        for number, chunk in enumerate(chunks):
+            chunk_embeddings = self.embedding_model.encode(chunk)
+            embeddings.append((number, chunk_embeddings))
+        return embeddings
 
 
 class Inference:
-    def __init__(self, config, device="cpu", server: LlamaCppServer = None):
+    def __init__(self, device="cpu", server: LlamaCppServer = None, chunkker: SemanticChunking = None):
         """Initialize Inference class with configuration.
 
         Args:
             config (dict): Configuration dictionary
         """
-        self.config = config
         self.server = server
         self.pipeline_device= device
+        self.chunkker = chunkker
 
 
     def load_pipeline(self, model, num_labels=None):
@@ -276,14 +322,38 @@ class Inference:
         return results
 
 
-    def server_inference(self, params):
-        pass
+    def server_inference(self, model, sys_prompt, task_prompt, notes, context,
+                         threads, max_tokens, temperature, summary=False, **kwargs):
+        server = self.server.start_server(n_ctx=context, n_threads=threads **kwargs)
+        if server.is_server_running() is False:
+            raise RuntimeError("Server failed to start. Check the logs for details.")
+        results=server.batch_inference(model=model, sys_prompt=sys_prompt, prompt=task_prompt, notes=notes,
+                                       max_tokens=max_tokens, temperature=temperature)
+        results.server.process_output(results, summary)
+        server.stop_server()
+        return results
 
-    def chunk_notes(self):
-        pass
+    def embed_notes(self, notes):
+        """Embed notes using the configured embedding model."""
+        if self.chunkker is None:
+            raise ValueError("Chunking model is not set.")
+        chunks = self.chunkker.chunk_notes(notes)
+        embeddings = self.chunkker.get_embeddings(chunks)
+        return embeddings
 
-    def get_embeddings(self, notes):
-        pass
+    def get_probs(self, database, start_date, complaint_filter):
+        """
+        Get the minimum probability of a visit based on chief complaints and start date.
+        :param database:
+        :param start_date:
+        :param complaint_filter:
+        :return:
+        """
+        probs = pd.read_sql(
+            f"select min(probs) from visits where chief_complaint in {','.join(complaint_filter)} and arrival_date >= '{start_date}'",
+            con=database.engine)
+
+        return probs[0]
 
 
 

@@ -13,11 +13,17 @@ from sqlalchemy import create_engine
 
 hf_logging.set_verbosity_error()
 
-from chirpp.inference.inference import Inference
-from chirpp.postprocess.postprocess import PostProcess
-from chirpp.preprocess.preprocess import SectionRemover, Preprocess
-from chirpp.preprocess.utils import deidentify
+from chirpp.preprocess.preprocess import Preprocess, SectionRemover
+from chirpp.preprocess.config import preprocess_config
+
+from chirpp.inference.inference import Inference, LlamaCppServer, SemanticChunking
+from chirpp.inference.config import inference_config
+from chirpp.inference.prompts import *
+
+#TODO deal with postprocess
+#TODO deal with database
 from chirpp.database.database import DataBase
+
 
 parser = arg.ArgumentParser(description='Preprocess notes file for inference')
 parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
@@ -31,9 +37,6 @@ args = parser.parse_args()
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Gathering requirements")
 
-# load config file this contains the parameters for inference and pre/post-processing
-with open(args.config) as f:
-    params = yaml.safe_load(f)
 
 # there is an environment file that contains the database connection information, this is not to be pushed to the repo
 env_values=dotenv_values(args.env_file)  
@@ -45,8 +48,8 @@ else:
     device = "cpu"
 
 # preprocessing, remove unwanted sections and keep raw notes in memory
-if "additional_rules" in list(params["pre_process"].keys()):
-    additional_rules = params["pre_process"]["additional_rules"]
+if "additional_rules" in list(preprocess_config.keys()):
+    additional_rules = preprocess_config["additional_rules"]
 else:
     additional_rules = None
 
@@ -63,90 +66,91 @@ database=DataBase(engine)
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Preprocessing")
 
 section_remover_for_inference = SectionRemover(lang_model="en_core_web_trf",
-                                               remove_sections=params["pre_process"]["remove_sections"],
-                                               keep_sections=params["pre_process"]["inference_sections"],
-                                               rules_json=params["pre_process"]["section_rules"],
+                                               remove_sections=preprocess_config["remove_sections"],
+                                               keep_sections=preprocess_config["inference_sections"],
+                                               rules_json=preprocess_config["section_rules"],
                                                additional_rules=additional_rules,
                                                gpu=device)
-preprocess=Preprocess(args.notes, params["preprocess"], section_remover_for_inference)
+
+preprocess=Preprocess(args.notes, preprocess_config, section_remover_for_inference)
 merged_notes= preprocess.preprocess_pipeline()
 
 # remove empty notes, there must be at least one triage note
 inference_notes = merged_notes.copy()
 inference_notes = inference_notes[~pd.isnull(inference_notes[params["inference"]["note_col"]])].copy()
 
+llama_server=LlamaCppServer(binary_path=["server"]["binary_path"],
+                            host=inference_config["server"]["host"],
+                            port=inference_config["server"]["port"],
+                            model_dict=inference_config["server"]["models"],)
 
-#TODO refactor to use openai package to llamma cpp connection
-inference = Inference(classification_model=os.path.abspath(params["inference"]["classification_model"]),
-                        summarization_model=os.path.abspath(params["inference"]["summarization_model"]),
-                        classification_labels=params["inference"]["classification_labels"],
-                        intent_model=os.path.abspath(params["inference"]["intent_model"]),
-                        intent_labels=params["inference"]["intent_labels"],
-                        substance_model=os.path.abspath(params["inference"]["substance_model"]),
-                        substance_labels=params["inference"]["substance_labels"],
-                        io_model=os.path.abspath(params["inference"]["io_model"]),
-                        io_labels=params["inference"]["io_labels"],
-                        location_model=os.path.abspath(params["inference"]["location_model"]),
-                        location_labels=params["inference"]["location_labels"],
-                        area_model=os.path.abspath(params["inference"]["area_model"]),
-                        area_labels=params["inference"]["area_labels"],
-                        ampm_model=os.path.abspath(params["inference"]["am_pm_model"]),
-                        ampm_labels=params["inference"]["am_pm_labels"],
-                        embedding_model=params["inference"]["embedding_model"],
-                        device=device)
+chunker= SemanticChunking(chunking_model=inference_config["chunking"]["model"],
+                          embedding_model=inference_config["embedding"]["model"],
+                          chunk_size=inference_config["chunking"]["chunk_size"],
+                          min_sentences=inference_config["chunking"]["min_sentences"],
+                          threshold=inference_config["chunking"]["threshold"],)
 
-# get model probabilities
+inference=Inference(device=device, server=llama_server, chunker=chunker)
+
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying")
+pipeline=inference.load_pipeline(inference_config["pipelines"]["classification"]["model"],
+                                       inference_config["pipelines"]["classification"]["num_labels"],)
 
-probs = inference.classify(inference_notes,
-                             params["inference"]["note_col"],
-                             params["inference"]["include_labels"])
+probs=inference.run(pipeline, inference_notes["Note Text"].tolist(),
+                    inference_config["pipelines"]["classification"]["labels"],
+                    inference_config["pipelines"]["classification"]["cutoff"],)
 
 inference_notes["probs"] = probs
-
 inference_notes = inference_notes.sort_values(by=["probs"], ascending=False)
-preprocessed_notes["Arrival Date"] = pd.to_datetime(preprocessed_notes["Arrival Date"], errors="coerce")
-filter_date=preprocessed_notes["Arrival Date"].drop_duplicates().min()+pd.DateOffset(days=params["inference"]["time_delta"]).tolist()[0]
+
+inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"], errors="coerce")
+
+# this is to go back in time and get notes so that we have enough cases and the probabilities are more stable
+filter_date=inference_notes["Arrival Date"].drop_duplicates().min()+pd.DateOffset(days=inference_config["time_delta"]).tolist()[0]
 
 #prob cutoff uses the last 30 days, single day is not reliable to use, there is too much variability
-prob_cutoff = inference.get_probs(database, start_date=filter_date, complaint_filter=params["inference"]["pos_complaints"])
+prob_cutoff = inference.get_probs(database, start_date=filter_date, complaint_filter=inference_config["pos_complaints"])
 
-if params["inference"]["use_chirpp"]:
-    inference_notes["probs"][inference_notes[params["inference"]["chirpp_col"]] == "CHIRPP ICON"] = 1
+if inference_config["use_chirpp"]:
+    inference_notes["probs"][inference_notes[inference_config["chirpp_col"]] == "CHIRPP ICON"] = 1
 
 # re-order because we just changed the probabilities
 inference_notes["is_chirpp"] = inference_notes["probs"] >= prob_cutoff
 
-# get summaries of positive cases
+# get summaries for all notes
+
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing")
 
-#this needs to change to use lllamacpp
-summaries = inference.summarize(inference_notes,
-                                  params["inference"]["note_col"],
-                                  params["inference"]["truncation"],
-                                  params["inference"]["max_length"])
+# model stuff is in the llama server model_dict, so we can just pass the model name
+# one limitation is here that we can only use one model at a time, we start and stop the server with each model.
+# this adds couple of minutes to the inference time.
 
-if params['inference']['anonymize_summaries'] and not params["pre_process"]['anonymize']:
-    new_summaries=[]
-    for sumr, name in zip(summaries, inference_notes["Patient Name"].to_list()):
-        deidentified=deidentify(sumr, params["pre_process"]["lang_model"], [name])
-        new_summaries.append(deidentified)
-    summaries=new_summaries
+summaries=inference.server_inference("summarization", sys_prompt=system_prompt,
+                                      task_prompt=summary_prompt,
+                                      notes=inference_notes["Note Text"],
+                                      context=inference_config["server"]["context_length"],
+                                      max_tokens=inference_config["server"]["summarization"]["max_tokens"],
+                                      threads= inference_config["server"]["threads"],
+                                      temperature=inference_config["server"]["summarization"]["temperature"],
+                                      summary=True)
 
 inference_notes["PHAC Narrative"] = summaries
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying intent")
 
-intent = inference.get_intent(notes=inference_notes[inference_notes["is_chirpp"]],
-                                notes_col=params["inference"]["note_col"],
-                                label_dict=params["inference"]["intent_label_dict"],
-                                cutoff=params["inference"]["intent_cutoff"],
-                                )
+pipeline=inference.load_pipeline(inference_config["pipelines"]["intent"]["model"],
+                                 inference_config["pipelines"]["intent"]["num_labels"],)
+
+intent=inference.run(pipeline, inference_notes["Note Text"].tolist(),
+                    inference_config["pipelines"]["intent"]["labels"],
+                    inference_config["pipelines"]["intent"]["cutoff"],)
+
 inference_notes["intent"] = None
 inference_notes["intent"][inference_notes["is_chirpp"]] = intent
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying substance use")
 
+#TODO stopeed here need to fix the rest.
 substance = inference.get_substance(notes=inference_notes[inference_notes["is_chirpp"]],
                                       notes_col=params["inference"]["note_col"],
                                       cutoff=params["inference"]["subs_cutoff"])
