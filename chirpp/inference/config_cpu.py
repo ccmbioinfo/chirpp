@@ -41,6 +41,8 @@ inference_config = {
         "system_prompt": system_prompt,
         "context_length": 4096,
         "threads": 6,
+        "ssl_cert" : None,
+        "ssl_key" : None,
 
         # model configurations
         "models": {

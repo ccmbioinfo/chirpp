@@ -1,0 +1,40 @@
+FROM continuumio/miniconda3:latest
+
+# Install system dependencies for GPU support, Git, and Apptainer compatibility
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    git \\
+    build-essential \\
+    libgl1-mesa-glx \\
+    libegl1-mesa \\
+    libxrandr2 \\
+    libxss1 \\
+    libxcursor1 \\
+    libxcomposite1 \\
+    libxdamage1 \\
+    libxi6 \\
+    libxtst6 \\
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY chirpp_gpu.yaml /tmp/environment.yaml
+
+RUN conda env create -f /tmp/environment.yaml && \\
+        conda clean --all -f -y && \\
+        rm /tmp/environment.yaml
+
+ENV PATH=/opt/conda/envs/{conda_env_name}/bin:$PATH
+
+SHELL ["/bin/bash", "-c"]
+
+RUN echo "source activate {conda_env_name}" > ~/.bashrc
+
+COPY . /chirpp/
+
+RUN mkdir -p /tmp /var/tmp /chirpp && \\
+    chmod -R 777 /tmp /var/tmp /chirpp
+
+RUN pip install . 
+
+EXPOSE 8080
+WORKDIR /chirpp
+
+
