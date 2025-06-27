@@ -1,12 +1,12 @@
 import os
 import subprocess
 import time
-import re
 
 from transformers import (pipeline, AutoModelForSequenceClassification,
-                          AutoTokenizer)
+                          AutoModelForCausalLM, AutoTokenizer)
 
 import pandas as pd
+import torch
 from chonkie import SemanticChunker
 from chonkie import Model2VecEmbeddings
 from model2vec import StaticModel
@@ -17,11 +17,13 @@ import requests
 import jsonschema
 from tqdm import tqdm
 
+from chirpp.inference.utils import *
+
 class NoModelError(Exception):
     pass
 
 class LlamaCppServer:
-    def __init__(self, binary_path, model_dict, host = "localhost", port = 8080):
+    def __init__(self, config):
         """Initialize Llama.cpp server manager.
 
         Args:
@@ -31,13 +33,27 @@ class LlamaCppServer:
             port (int): Server port (default: 8080)
         """
         self.current_directory = os.path.abspath(os.getcwd())
-        self.binary_path = binary_path
-        self.model_dict = model_dict
-        self.host = host
-        self.port = port
+
+        self.binary_path = config["binary_path"]
+        self.model_dict = config["models"]
+        self.host = config["host"]
+        self.port = config["port"]
+        cmd = [
+            self.model_dict,
+            "--host", self.host,
+            "--port", str(self.port),
+            "--ctx-size", str(self.model_dict["context_length"]),
+            "--threads", str(self.model_dict["threads"]),
+        ]
+        if self.config["ssl_cert"] and self.config["ssl_key"]:
+            cmd.extend(["--ssl-cert", self.config["ssl_cert"],
+                        "--ssl-key", self.config["ssl_key"]])
+            self.protocol="https"
+        else:
+            self.protocol="http"
+
         self.process = None
-        self.base_url = "{}://{}:{}/"
-        os.chdir(os.path.abspath(self.binary_path))
+        self.url = f"{self.protocol}://{self.host}:{self.port}"
 
         # JSON schema for inference output validation
         self.inference_schema = {
@@ -63,10 +79,7 @@ class LlamaCppServer:
             "required": ["choices"]
         }
 
-    def prepare_user_prompt(self, prompt, note):
-        return "\n".join([prompt, note])
-
-    def start_server(self, model, n_ctx=4096, n_threads= 4, ssl_cert= None, ssl_key= None) -> bool:
+    def start_server(self, model) -> bool:
         """Start the Llama.cpp server with specified parameters.
 
         Args:
@@ -81,23 +94,10 @@ class LlamaCppServer:
         if self.process is not None:
             print("Server is already running")
             return False
+        os.chdir(os.path.abspath(self.binary_path))
 
-        model_cmd=["-m", os.path.abspath(self.model_dict[model]["model"]), "--alias", model]
-
-        cmd = [
-            "./llama-server",
-            *model_cmd,  # Unpack model command arguments
-            "--host", self.host,
-            "--port", str(self.port),
-            "--ctx-size", str(n_ctx),
-            "--threads", str(n_threads),
-        ]
-
-        if ssl_cert and ssl_key:
-            cmd.extend(["--ssl-cert", ssl_cert, "--ssl-key", ssl_key])
-            protocol="https"
-        else:
-            protocol="http"
+        model_cmd = ["-m", os.path.abspath(self.model_dict[model]["model"]), "--alias", model]
+        cmd=self.cmd.extend(model_cmd)
 
         try:
             self.process = subprocess.Popen(
@@ -112,7 +112,6 @@ class LlamaCppServer:
             start_time = time.time()
             while time.time() - start_time < timeout:
                 try:
-                    self.url=self.base_url.format(protocol, self.host, self.port)
                     response = requests.get(f"{self.url}/health", verify=certifi.where())
                     if response.status_code == 200:
                         print("Server started successfully")
@@ -149,7 +148,7 @@ class LlamaCppServer:
             print(f"Failed to stop server: {str(e)}")
             return False
 
-    def single_inference(self, model, sys_prompt, prompt, note, max_tokens: int = 512, temperature: float = 0.7):
+    def single_inference(self, model, note):
         """Run single inference request.
 
         Args:
@@ -160,9 +159,9 @@ class LlamaCppServer:
         Returns:
             Dict: Inference result with validated JSON output
         """
-        user_prompt=self.prepare_user_prompt(prompt, note)
+        user_prompt=prepare_user_prompt(self.model_dict["model"]["prompt"], note)
         messages=[
-                    {"role":"system", "content":sys_prompt},
+                    {"role":"system", "content":self.model_dict["system_prompt"]},
                     {"role": "user", "content": user_prompt}
         ]
         client=openai.OpenAI(
@@ -172,10 +171,10 @@ class LlamaCppServer:
 
         try:
             response = client.chat.completions.create(
-                model=model,  # Model name is irrelevant for local Llama.cpp server
+                model=model,
                 messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
+                max_tokens=self.model_dict["model"]["max_tokens"],
+                temperature=self.model_dict["model"]["temperature"],
                 stream=False
             )
             result = response.to_dict()
@@ -190,7 +189,7 @@ class LlamaCppServer:
         except (openai.APIError, jsonschema.ValidationError) as e:
             return {"error": f"Inference failed: {str(e)}"}
 
-    def batch_inference(self, model, sys_prompt, prompt, notes, max_tokens= 90, temperature= 0.7):
+    def batch_inference(self, model, notes):
         """Run batch inference requests.
 
         Args:
@@ -203,7 +202,7 @@ class LlamaCppServer:
         """
         results = []
         for note in tqdm(notes, unit=" Notes", desc="Processing: "):
-            result = self.single_inference(model, sys_prompt, prompt, note, max_tokens, temperature)
+            result = self.single_inference(model, note)
             results.append(result)
         return results
 
@@ -214,34 +213,8 @@ class LlamaCppServer:
             bool: True if server is running, False otherwise
         """
 
-        response = requests.get(f"{self.base_url}/health", verify=certifi.where())
+        response = requests.get(f"{self.url}/health", verify=certifi.where())
         return response.status_code == 200
-
-    def process_results(self, output_list, out_type=str, summary=False):
-        """
-        the server returns a bunch of stuff, and only the first portion is the actual output with the desired information and
-        structure, I will need to mactch the brackets and clean the ouptut.
-        :param output_list: results from the sever
-        :param out_type: this will remain string for now, but can be changed to int or float if needed
-        :return: a list of dictionaries with cleaned output
-        """
-        cleaned_output = []
-        for item in output_list:
-            if summary:
-                clean={"summary":item.replace("{'summary':", "").split("}")[0]}
-            else:
-                match= re.findall(r"\{[^}]*\}", item)[0]
-                match=match.replace('"', "").replace("'", "").replace("\'", "").\
-                    replace("{", "").replace("}", "").split("\n") #this gives a list of strings
-                clean={}
-                for out in match:
-                    out=out.split(":")
-                    if out[1]=="N\\A":
-                        out[1]=""
-                    clean[out[0]]=out_type(out[1].replace(",", "").replace(".0", ""))
-            cleaned_output.append(clean)
-        return cleaned_output
-
 
 class SemanticChunking:
     def __init__(self, chunking_model, embedding_model, chunk_size, min_sentences, threshold):
@@ -268,38 +241,64 @@ class SemanticChunking:
         chunks = chunker.chunk(notes) #this is a list of list of strings
         return chunks
 
-    def get_embeddings(self, chunks):
-        embeddings = []
-        for number, chunk in enumerate(chunks):
-            chunk_embeddings = self.embedding_model.encode(chunk)
-            embeddings.append((number, chunk_embeddings))
+    def get_embeddings(self, texts):
+        embeddings = self.embedding_model.encode(texts)
         return embeddings
 
-
+# TODO moving model dict here and will init llamacpp server with it
 class Inference:
-    def __init__(self, device="cpu", server: LlamaCppServer = None, chunkker: SemanticChunking = None):
-        """Initialize Inference class with configuration.
-
-        Args:
-            config (dict): Configuration dictionary
+    def __init__(self, config, device="cpu"):
         """
-        self.server = server
-        self.pipeline_device= device
-        self.chunkker = chunkker
 
+        :param device:
+        :param server:
+        :param chunker:
+        """
+        self.pipeline_device = device
 
-    def load_pipeline(self, model, num_labels=None):
-        """Load classification pipeline."""
+        # this leaves the option to use llamacpp with and without gpu, my setup does not
+        # have a gpu, so I will use the cpu version of the model
+        if "server" in config.keys():
+            self.server = LlamaCppServer(config["server"])
+
+        self.chunker = SemanticChunker(chunking_model=config["chunking"]["model"],
+                                       embedding_model=config["embedding"]["model"],
+                                       chunk_size=config["chunking"]["chunk_size"],
+                                       min_sentences=config["chunking"]["min_sentences"],
+                                       threshold=config["chunking"]["threshold"])
+
+    def load_pipeline(self, model, model_type="classification", num_labels=None):
+        """
+        Load a text classification or causal language model pipeline.
+        :param model:
+        :param model_type:
+        :param num_labels:
+        :return:
+        """
         if model is None:
             raise NoModelError("No model provided for inference pipeline.")
-        model = AutoModelForSequenceClassification.from_pretrained(model, num_labels=num_labels)
         tokenizer = AutoTokenizer.from_pretrained(model, padding="max_length", truncation=True)
-        pipe = pipeline("text-classification", model=model, tokenizer=tokenizer, device=self.device)
+
+        if model_type == "classification":
+            model = AutoModelForSequenceClassification.from_pretrained(model, num_labels=num_labels)
+            pipe = pipeline("text-classification", model=model, tokenizer=tokenizer, device=self.device)
+        elif model_type == "causal":
+            model=AutoModelForCausalLM.from_pretrained(model)
+            pipe = pipeline(
+                "text-generation",
+                model=model,
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
+            )
+        else:
+            raise NotImplementedError(f"Model {model_type} is not supported.")
+
         return pipe
 
-    def run_pipeline(self, pipeline, notes, label_dict=None, cutoff=0.8):
-        num_labels=len(label_dict.keys()) if label_dict else None
-        pipe = self.load_pipeline(pipeline, notes, num_labels)
+    def run_classification_pipeline(self, model, notes, label_dict=None, cutoff=0.8):
+        """Run classification pipeline on notes."""
+        num_labels = len(label_dict.keys()) if label_dict else None
+        pipe = self.load_pipeline(model, "classification", num_labels)
         labels = pipe(notes)
         edited_labels = []
         for lab in labels:
@@ -321,6 +320,46 @@ class Inference:
 
         return results
 
+    def run_causal_pipeline(self, pipeline, notes, sys_prompt, task_prompt, model_type="causal",
+                            max_tokens=20, temperature=0.7):
+        """
+
+        :param pipeline:
+        :param notes:
+        :param model_type:
+        :param sys_prompt:
+        :param task_prompt:
+        :param max_tokens:
+        :param temperature:
+        :return:
+        """
+        pipe=self.load_pipeline(pipeline, model_type=model_type)
+        results = []
+        for note in notes:
+            user_protmpt = prepare_user_prompt(task_prompt, note)
+            messages = [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_protmpt},
+            ]
+            outputs = pipe(
+                messages,
+                max_new_tokens=max_tokens,
+                temperature=temperature,
+            )
+            output = process_results(outputs[0]["generated_text"][-1])
+            results.append(output)
+        return results
+
+    def run_pipeline(self, model, notes):
+        if model["type"]=="classification":
+            results= self.run_classification_pipeline(model["model"], notes, model["labels"], model["cutoff"])
+        if model["type"]=="causal":
+            results = self.run_causal_pipeline(model["model"], notes, model["system_prompt"],
+                                            model["prompt"], model_type=model["type"],
+                                            max_tokens=model["max_tokens"],
+                                            temperature=model["temperature"])
+        return results
+
 
     def server_inference(self, model, sys_prompt, task_prompt, notes, context,
                          threads, max_tokens, temperature, summary=False, **kwargs):
@@ -333,12 +372,15 @@ class Inference:
         server.stop_server()
         return results
 
-    def embed_notes(self, notes):
+    def embed_notes(self, notes, chunk=True):
         """Embed notes using the configured embedding model."""
-        if self.chunkker is None:
+        if self.chunker is None:
             raise ValueError("Chunking model is not set.")
-        chunks = self.chunkker.chunk_notes(notes)
-        embeddings = self.chunkker.get_embeddings(chunks)
+        if chunk:
+            chunks = self.chunker.chunk_notes(notes)
+        else:
+            chunks = notes
+        embeddings = self.chunker.get_embeddings(chunks)
         return embeddings
 
     def get_probs(self, database, start_date, complaint_filter):

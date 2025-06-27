@@ -11,14 +11,14 @@ from transformers import logging as hf_logging
 from dotenv import dotenv_values
 from sqlalchemy import create_engine
 
+from build.lib.chirpp.generate_report import inference_notes
+
 hf_logging.set_verbosity_error()
 
 from chirpp.preprocess.preprocess import Preprocess, SectionRemover
 from chirpp.preprocess.config import preprocess_config
 
 from chirpp.inference.inference import Inference, LlamaCppServer, SemanticChunking
-from chirpp.inference.config import inference_config
-from chirpp.inference.prompts import *
 
 #TODO deal with postprocess
 #TODO deal with database
@@ -42,10 +42,14 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Gathering req
 env_values=dotenv_values(args.env_file)  
 
 # check for gpu availability
-if is_available():
+gpu=is_available()
+
+if gpu:
     device = "cuda:0"
+    from chirpp.inference.config_gpu import inference_config
 else:
     device = "cpu"
+    from chirpp.inference.config_cpu import inference_config
 
 # preprocessing, remove unwanted sections and keep raw notes in memory
 if "additional_rules" in list(preprocess_config.keys()):
@@ -73,15 +77,14 @@ section_remover_for_inference = SectionRemover(lang_model="en_core_web_trf",
                                                gpu=device)
 
 preprocess=Preprocess(args.notes, preprocess_config, section_remover_for_inference)
-merged_notes= preprocess.preprocess_pipeline()
+merged_notes, processed_notes = preprocess.preprocess_pipeline()
 
 # remove empty notes, there must be at least one triage note
-inference_notes = merged_notes.copy()
-inference_notes = inference_notes[~pd.isnull(inference_notes[params["inference"]["note_col"]])].copy()
+inference_notes = processed_notes.copy()
+inference_notes = inference_notes[~pd.isnull(inference_notes["processed_notes"])].copy()
 
-llama_server=LlamaCppServer(binary_path=["server"]["binary_path"],
-                            host=inference_config["server"]["host"],
-                            port=inference_config["server"]["port"],
+#TODO this will need to be refactored to use gpu if available
+llama_server=LlamaCppServer(binary_path=inference_config["server"]["binary_path"],
                             model_dict=inference_config["server"]["models"],)
 
 chunker= SemanticChunking(chunking_model=inference_config["chunking"]["model"],
@@ -93,12 +96,9 @@ chunker= SemanticChunking(chunking_model=inference_config["chunking"]["model"],
 inference=Inference(device=device, server=llama_server, chunker=chunker)
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying")
-pipeline=inference.load_pipeline(inference_config["pipelines"]["classification"]["model"],
-                                       inference_config["pipelines"]["classification"]["num_labels"],)
 
-probs=inference.run(pipeline, inference_notes["Note Text"].tolist(),
-                    inference_config["pipelines"]["classification"]["labels"],
-                    inference_config["pipelines"]["classification"]["cutoff"],)
+#TODO this is not done, there was a bunch of mistakes in the previous commit.
+probs=inference.run_pipeline(inference_config["pipelines"]["classification"], inference_notes["processed_notes"].tolist())
 
 inference_notes["probs"] = probs
 inference_notes = inference_notes.sort_values(by=["probs"], ascending=False)
@@ -125,14 +125,12 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing")
 # one limitation is here that we can only use one model at a time, we start and stop the server with each model.
 # this adds couple of minutes to the inference time.
 
-summaries=inference.server_inference("summarization", sys_prompt=system_prompt,
-                                      task_prompt=summary_prompt,
-                                      notes=inference_notes["Note Text"],
-                                      context=inference_config["server"]["context_length"],
-                                      max_tokens=inference_config["server"]["summarization"]["max_tokens"],
-                                      threads= inference_config["server"]["threads"],
-                                      temperature=inference_config["server"]["summarization"]["temperature"],
-                                      summary=True)
+if not gpu:
+    summaries=inference.server_inference("summarization", notes=inference_notes["processed_notes"], summary=True)
+else:
+    summaries=inference.run_pipeline(inference_config["pipelines"]["summarization"], inference_notes["processed_notes"].tolist())
+
+
 
 inference_notes["PHAC Narrative"] = summaries
 
@@ -141,7 +139,7 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying i
 pipeline=inference.load_pipeline(inference_config["pipelines"]["intent"]["model"],
                                  inference_config["pipelines"]["intent"]["num_labels"],)
 
-intent=inference.run(pipeline, inference_notes["Note Text"].tolist(),
+intent=inference.run(pipeline, inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist(),
                     inference_config["pipelines"]["intent"]["labels"],
                     inference_config["pipelines"]["intent"]["cutoff"],)
 
@@ -150,58 +148,92 @@ inference_notes["intent"][inference_notes["is_chirpp"]] = intent
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying substance use")
 
-#TODO stopeed here need to fix the rest.
-substance = inference.get_substance(notes=inference_notes[inference_notes["is_chirpp"]],
-                                      notes_col=params["inference"]["note_col"],
-                                      cutoff=params["inference"]["subs_cutoff"])
-inference_notes["sub"] = None
-inference_notes["sub"][inference_notes["is_chirpp"]] = substance
+if not gpu:
+    substance=inference.server_inference("substance",
+                                      notes=inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist(),
+                                      summary=False)
+else:
+    substance=inference.run_pipeline(inference_config["pipelines"]["substance"],
+                                     inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
+
+inference_notes["substance"] = None
+inference_notes["substance"][inference_notes["is_chirpp"]] = substance
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying inside/outside")
 
-io=inference.get_io(notes=inference_notes[inference_notes["is_chirpp"]],
-                          notes_col=params["inference"]["note_col"],
-                          cutoff=params["inference"]["io_cutoff"])
+if not gpu:
+    io=inference.server_inference("io",
+                              notes=inference_notes["processed_notes"]["is_chirpp"],
+                              summary=False)
+else:
+    io=inference.run_pipeline(inference_config["pipelines"]["io"],
+                                     inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
 
-inference_notes["io"]=None
-inference_notes["io"][(inference_notes["is_chirpp"])] = io
+inference_notes["io"] = None
+inference_notes["io"][inference_notes["is_chirpp"]] = io
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying am/pm")
 
-ampm=inference.get_ampm(notes=inference_notes[inference_notes["is_chirpp"]],
-                          notes_col=params["inference"]["note_col"],
-                          cutoff=params["inference"]["am_pm_cutoff"])
+if not gpu:
+    am_pm=inference.server_inference("am_pm",
+                              notes=inference_notes["processed_notes"]["is_chirpp"],
+                              summary=False)
+else:
+    am_pm = inference.run_pipeline(inference_config["pipelines"]["am_pm"],
+                                       inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
 
-inference_notes["ampm"]=None
-inference_notes["ampm"][(inference_notes["is_chirpp"])] = ampm
+inference_notes["am_pm"] = None
+inference_notes["am_pm"][inference_notes["is_chirpp"]] = substance
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying Location")
 
-location=inference.get_location(notes=inference_notes[inference_notes["is_chirpp"]],
-                                      notes_col=params["inference"]["note_col"],
-                                      cutoff=params["inference"]["location_cutoff"],
-                                     label_dict=params["inference"]["location_label_dict"])
+if not gpu:
+    location=inference.server_inference("location",
+                              notes=inference_notes["processed_notes"]["is_chirpp"],
+                              summary=False)
+else:
+    location = inference.run_pipeline(inference_config["pipelines"]["location"],
+                                       inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
 
 inference_notes["location"]=None
 inference_notes["location"][inference_notes["is_chirpp"]] = location
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying Area")
 
-area=inference.get_area(notes=inference_notes[inference_notes["is_chirpp"]],
-                              notes_col=params["inference"]["note_col"],
-                              cutoff=params["inference"]["area_cutoff"],
-                              label_dict=params["inference"]["area_label_dict"])
+if not gpu:
+    area=inference.server_inference("area",
+                              notes=inference_notes["processed_notes"]["is_chirpp"],
+                              summary=False)
+else:
+    area = inference.run_pipeline(inference_config["pipelines"]["area"],
+                                       inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
+
 inference_notes["area"]=None
 inference_notes["area"][inference_notes["is_chirpp"]] = area
 
-# no neeed to calculate embeddings if we are not going to use them.
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings for RAG")
 
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings")
-embeddings=inference.get_embeddings(notes=inference_notes,
-                                    notes_col=params["inference"]["note_col"])
+inference_notes["embeddings"]=None
+inference_notes["embeddings"][inference_notes["is_chirpp"]] = inference.chunker.get_embeddings(inference_notes["processed_notes"][inference_notes["is_chirpp"]])
+
+chunked_notes={"note_index":[],
+               "chunk_index":[],
+               "chunk_text":[],
+               "embeddings":[]}
+
+for note_index, note in enumerate(merged_notes["Note Text"].tolist()):
+    chunks= inference.chunker.chunk(note)
+    for chunk_index, chunk in enumerate(chunks):
+        chunked_notes["note_index"].append(note_index)
+        chunked_notes["chunk_index"].append(chunk_index)
+        chunked_notes["chunk_text"].append(chunk)
+        chunked_notes["embeddings"].append(inference.chunker.get_embedding(chunk))
+
+chunked_notes = pd.DataFrame(chunked_notes)
 
 
-# post processing to generate the final output
+#TODO stopped here, need to continue with postprocessing
+
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Report")
 
 params["post_process"]["pos_complaints"] = params["inference"]["pos_complaints"]

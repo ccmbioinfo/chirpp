@@ -1,8 +1,14 @@
 from chirpp.inference.prompts import *
 
+# the difference between config_cpu and config_gpu is that config_cpu we are using llamaccp for inference
+# for the llama modelsl in a gpu instances we will just use the instruction fine tuned models as is.
+# depending on the depolyment that means we will need to change the files in the models folder and need to
+# provide instructions for where to get them.
+
 inference_config = {
     "pipelines": {
         "classification": {
+            "type": "classification",
             "num_labels": 2,
             "include_labels": False,
             "max_length": 512,
@@ -12,6 +18,7 @@ inference_config = {
             "labels": {'0': False, '1': True}
         },
         "intent": {
+            "type": "classification",
             "num_labels": 7,
             "include_labels": False,
             "max_length": 512,

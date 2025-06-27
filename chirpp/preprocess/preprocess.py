@@ -182,5 +182,5 @@ class Preprocess:
         relevant_notes = self._get_relevant_notes(merged_notes, self.params["note_types"], self.params["group_cols"])
         processed_notes = self._remove_sections(relevant_notes, raw_notes, self.section_remover, self.keep_unlabelled,
                                                self.anonymize)
-        merged_notes=merged_notes.merge(processed_notes, how="left", on="CSN")
-        return merged_notes
+
+        return merged_notes, processed_notes
