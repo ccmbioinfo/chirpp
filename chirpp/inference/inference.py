@@ -22,8 +22,10 @@ from chirpp.inference.utils import *
 class NoModelError(Exception):
     pass
 
+
+# noinspection PyTypeChecker
 class LlamaCppServer:
-    def __init__(self, config):
+    def __init__(self, config, binary_path):
         """Initialize Llama.cpp server manager.
 
         Args:
@@ -34,10 +36,12 @@ class LlamaCppServer:
         """
         self.current_directory = os.path.abspath(os.getcwd())
 
-        self.binary_path = config["binary_path"]
+        self.binary_path = binary_path
         self.model_dict = config["models"]
         self.host = config["host"]
         self.port = config["port"]
+        self.context=config["context_length"]
+
         cmd = [
             self.model_dict,
             "--host", self.host,
@@ -80,16 +84,10 @@ class LlamaCppServer:
         }
 
     def start_server(self, model) -> bool:
-        """Start the Llama.cpp server with specified parameters.
-
-        Args:
-            n_ctx (int): Context size (default: 2048)
-            n_threads (int): Number of threads (default: 4)
-            ssl_cert (Optional[str]): Path to SSL certificate file
-            ssl_key (Optional[str]): Path to SSL key file
-
-        Returns:
-            bool: True if server started successfully, False otherwise
+        """
+        start llama.cpp server with a given model
+        :param model: model dict from self config
+        :return:
         """
         if self.process is not None:
             print("Server is already running")
@@ -249,17 +247,20 @@ class SemanticChunking:
 class Inference:
     def __init__(self, config, device="cpu"):
         """
-
-        :param device:
-        :param server:
-        :param chunker:
+        Initialize inference class instance, the chunking method is the same for both llamaccp and transformers pipelines
+        usage
+        :param config: config parameters, see chirpp.inference.config.py
+        :param device: cuda or cpu
         """
+
         self.pipeline_device = device
 
         # this leaves the option to use llamacpp with and without gpu, my setup does not
         # have a gpu, so I will use the cpu version of the model
         if "server" in config.keys():
             self.server = LlamaCppServer(config["server"])
+        else:
+            self.server = None
 
         self.chunker = SemanticChunker(chunking_model=config["chunking"]["model"],
                                        embedding_model=config["embedding"]["model"],
@@ -270,9 +271,9 @@ class Inference:
     def load_pipeline(self, model, model_type="classification", num_labels=None):
         """
         Load a text classification or causal language model pipeline.
-        :param model:
-        :param model_type:
-        :param num_labels:
+        :param model: the model secification is defined in the config file
+        :param model_type: this is either classification or causal, the only causal model is the summarization one.
+        :param num_labels: for classification models this is the number of labels
         :return:
         """
         if model is None:
@@ -296,7 +297,15 @@ class Inference:
         return pipe
 
     def run_classification_pipeline(self, model, notes, label_dict=None, cutoff=0.8):
-        """Run classification pipeline on notes."""
+        """
+        Run classification pipeline on notes this depends on whether the llamacpp method is being used, regadless chirpp +/-
+        will be a transformers pipeline due to its efficient
+        :param model: the model, this model needs to be present in the path specified in the config file othewise there will be an error
+        :param notes: notes, a list
+        :param label_dict: label dict, the labels in the model training is not the same as the actual labels in the data
+        :param cutoff: anything below this will be either be the negative class or left blank
+        :return: list of labels
+        """
         num_labels = len(label_dict.keys()) if label_dict else None
         pipe = self.load_pipeline(model, "classification", num_labels)
         labels = pipe(notes)
@@ -360,15 +369,12 @@ class Inference:
                                             temperature=model["temperature"])
         return results
 
+    def server_inference(self, model, notes):
 
-    def server_inference(self, model, sys_prompt, task_prompt, notes, context,
-                         threads, max_tokens, temperature, summary=False, **kwargs):
-        server = self.server.start_server(n_ctx=context, n_threads=threads **kwargs)
+        server = self.server.start_server(model=model)
         if server.is_server_running() is False:
             raise RuntimeError("Server failed to start. Check the logs for details.")
-        results=server.batch_inference(model=model, sys_prompt=sys_prompt, prompt=task_prompt, notes=notes,
-                                       max_tokens=max_tokens, temperature=temperature)
-        results.server.process_output(results, summary)
+        results=server.batch_inference(model=model, notes=notes)
         server.stop_server()
         return results
 

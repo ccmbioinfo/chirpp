@@ -64,11 +64,11 @@ using the following codes:
 	131: farm, barn, coop but exclduing the farmhouse
 
 your response should have the following structure:
-\{"location":<location code>\}
+\\{"location":<location code>\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. If you do not have the 
-answer return 0 instead of the location code (i.e. \{"location":0\}
+answer return 0 instead of the location code (i.e. \\{"location":0\\}
 
 Clinical Note Text:
 
@@ -130,11 +130,11 @@ using the following codes:
 	92: other interior space like storage, attic etc. 
 
 your response should have the following structure:
-\{"area":<location code>\}
+\\{"area":<area code>\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. If you do not have the 
-answer return 0 instead of the area code (i.e. \{"area":0\}
+answer return 0 instead of the area code (i.e. \\{"area":0\\}
 
 Clinical Note Text:
 
@@ -149,11 +149,11 @@ outdoors using the following codes:
 2: outdoors
 
 your response should have the following structure:
-\{"io":<location code>\}
+\\{"io":<location code>\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. If you do not have the 
-answer return 0 instead of the inside/outside code (i.e. \{"io":0\}
+answer return 0 instead of the inside/outside code (i.e. \\{"io":0\\}
 
 Clinical Note Text:
 """
@@ -167,11 +167,11 @@ or pm
 2: pm
 
 your response should have the following structure:
-\{"am_pm":<location code>\}
+\\{"am_pm":<location code>\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. If you do not have the 
-answer return 0 instead of the am/pm code (i.e. \{"am_pm":0\}
+answer return 0 instead of the am/pm code (i.e. \\{"am_pm":0\\}
 
 Clinical Note Text:
 
@@ -184,7 +184,7 @@ like noon, midnight use time representations of it insted like 12:00 or 24:00. T
 
 your response should have the following structure:
 
-\{"time":<HH:MM>\}
+\\{"time":<HH:MM>\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. 
@@ -198,7 +198,7 @@ For the clincal note provided below indicate the the relative date the injury ha
 for yesterday, -7 last week, -30 for last month etc. If the date is not mentioned in the text return 99. 
 your response should have the following structure:
 
-\{"date":<date>\}
+\\{"date":<date>\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. 
@@ -213,7 +213,7 @@ Summarize the clincal note provided below in less than 50 words. Do not include 
 
 your response should have the following structure:
 
-\{"summary":"<summary>"\}
+\\{"summary":"<summary>"\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. 
@@ -235,7 +235,7 @@ of activity.
 
 Your response should have the following structure:
 
-\{"sports_code":<code>"\}
+\\{"sports_code":<code>"\\}
 
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
@@ -259,8 +259,8 @@ If the response is yes also indicate the name of the substance. If a substance i
 
 Your response should have the following structure:
 
-\{"sub":<1 or 2>, 
-  "sub_id":<name of the substance(s) i.e. sub1, sub2 etc. or unkown or "N/A" if sub is 1>\}
+\\{"sub":<1 or 2>, 
+  "sub_id":<name of the substance(s) i.e. sub1, sub2 etc. or unkown or "N/A" if sub is 1>\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. 
@@ -287,15 +287,15 @@ is probably wearing helmet and knee/elbow pads if they are playing hockey in a t
 	12: mouthguard, 
 	19: baby gate
 
-If there are no devices or if the devices are unkown only fill the first value and leave the rest as "N/A".
+If there are no devices or if the devices are unknown only fill the first value and leave the rest as "N/A".
 
 Your response shoud have the following structure:
 
-    \{"sd1":<device or -1 or 0>, 
+    \\{"sd1":<device or -1 or 0>, 
       "sd2":<device or "N/A">,
       "sd3":<device or "N/A">,
       "sd4":<device or "N/A">,
-      "sd5":<device or "N/A">\}
+      "sd5":<device or "N/A">\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. 
@@ -352,9 +352,9 @@ the least. If there is less than 3 injuries fill in "N/A" for the unusued spaces
 
 Your response shoud have the following structure:
 
-    \{"no1":<code>, 
+    \\{"no1":<code>, 
       "no2":<code or "N/A">,
-      "no3":<code or "N/A">\}
+      "no3":<code or "N/A">\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. 
@@ -409,9 +409,9 @@ the least. If there is less than 3 injuries fill in "N/A" for the unusued spaces
 
 Your response shoud have the following structure:
 
-    \{"bp1":<code>, 
+    \\{"bp1":<code>, 
       "bp2":<code or "N/A">,
-      "bp3":<code or "N/A">\}
+      "bp3":<code or "N/A">\\}
 
 Do not deviate from the this notation and return only this notation without any new lines (\n) or
 code indicators (```). You do not need to specify that this is a JSON. 

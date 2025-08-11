@@ -43,10 +43,10 @@ gpu=is_available()
 
 if gpu:
     device = "cuda:0"
-    from chirpp.inference.config_gpu import inference_config
+    from chirpp.inference.config_transformers import inference_config
 else:
     device = "cpu"
-    from chirpp.inference.config_cpu import inference_config
+    from chirpp.inference.config_llama import inference_config
 
 # preprocessing, remove unwanted sections and keep raw notes in memory
 if "additional_rules" in list(preprocess_config.keys()):
@@ -122,7 +122,8 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing")
 # one limitation is here that we can only use one model at a time, we start and stop the server with each model.
 # this adds couple of minutes to the inference time.
 
-if not gpu:
+#pipelines takes precendence, for now.
+if "summarization" not in inference_config["pipelines"].keys():
     summaries=inference.server_inference("summarization", notes=inference_notes["processed_notes"], summary=True)
 else:
     summaries=inference.run_pipeline(inference_config["pipelines"]["summarization"], inference_notes["processed_notes"].tolist())
@@ -147,8 +148,7 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying s
 
 if not gpu:
     substance=inference.server_inference("substance",
-                                      notes=inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist(),
-                                      summary=False)
+                                      notes=inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
 else:
     substance=inference.run_pipeline(inference_config["pipelines"]["substance"],
                                      inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
@@ -160,8 +160,7 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying i
 
 if not gpu:
     io=inference.server_inference("io",
-                              notes=inference_notes["processed_notes"]["is_chirpp"],
-                              summary=False)
+                              notes=inference_notes["processed_notes"]["is_chirpp"])
 else:
     io=inference.run_pipeline(inference_config["pipelines"]["io"],
                                      inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
@@ -173,8 +172,7 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying a
 
 if not gpu:
     am_pm=inference.server_inference("am_pm",
-                              notes=inference_notes["processed_notes"]["is_chirpp"],
-                              summary=False)
+                              notes=inference_notes["processed_notes"]["is_chirpp"])
 else:
     am_pm = inference.run_pipeline(inference_config["pipelines"]["am_pm"],
                                        inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
@@ -186,8 +184,7 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying L
 
 if not gpu:
     location=inference.server_inference("location",
-                              notes=inference_notes["processed_notes"]["is_chirpp"],
-                              summary=False)
+                              notes=inference_notes["processed_notes"]["is_chirpp"])
 else:
     location = inference.run_pipeline(inference_config["pipelines"]["location"],
                                        inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
@@ -197,10 +194,9 @@ inference_notes["location"][inference_notes["is_chirpp"]] = location
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying Area")
 
-if not gpu:
+if "area" not in inference_config["pipelines"].keys():
     area=inference.server_inference("area",
-                              notes=inference_notes["processed_notes"]["is_chirpp"],
-                              summary=False)
+                              notes=inference_notes["processed_notes"]["is_chirpp"])
 else:
     area = inference.run_pipeline(inference_config["pipelines"]["area"],
                                        inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
