@@ -253,6 +253,6 @@ class DataBase:
                                       where(visits_table.c.mrn == mrn)).fetchall()
 
 
-        return visits.merge(patients, how="left", on="mrn")
+        return visits
 
 

@@ -97,7 +97,8 @@ class Preprocess:
         :param additional_columns: what additional columns to read from the crystal file
         :param filters: a dict describing what kind of values to keep, for example {"Note Type":"ED Provider Notes"} will
         take only ED provider notes from the Note type column
-        :return: dataframe with raw notes. This will be used for further processing
+        :return: dataframe with raw notes. This will be used for further processing, this contains all the original columns, there is
+        not change to the dataframe
         """
         if self.note_file.endswith("xlsx"):
             notes = read_crystal_excel_file(path=self.note_file)
@@ -107,14 +108,15 @@ class Preprocess:
 
     def _merge_notes(self, notes, group_cols=["CSN"], line_col="Note Line"):
         """
-        merge repeated notes of same visit into a single note text to be used by llms
-        :param section_remover: an instance of SectionRemover
-        :param include_cols: which additional columns to include in the note text like Chief complaint, diagnosis etc., an iterable
-        :param group_cols: which columns to group by default is ["MRN", "Arrival Date"] this way each pandas.groupby will
-        be specific to one visit of one patient, an iterable or str
-        :param orientation: which way to add the extra columns, at the beginning of the note or at the end?, str
-        :return: dataframe with merged notes, there will also be a processed notes column that is the merge of triage and
-        provider notes with sections removed and terms replaced
+        Merge notes, in the EPIC database sometimes if a note is too long they are split into multiple lines, this will
+        combine those lines into one note and return the dataframe where no other columns are changes. I am also removing
+        the visits where there are no notes, even is LAMA there should be a triage note, if not how do we even know that they
+        were a patient.
+        :param notes: Notes dataframe from _read_raw_notes
+        :param group_cols: Group the columns by csn, the CSN is unique for each patient visit so a patient can have multiple visits
+        :param line_col: The column that shows the integer note line this is 1 based.
+        :return: return the dataframe with merged notes. In addition to merging the notes I am replacing some abbreviations in the text
+        the dict showing these are in the utils file
         """
         notes_grouped = notes.groupby(group_cols)
 
@@ -142,7 +144,9 @@ class Preprocess:
         get relevant notes from the dataframe, this is used to filter out notes that are not relevant for the task
         :param notes: dataframe with raw notes
         :param note_types: list of note types to keep, if None will keep all note types
-        :return: dataframe with relevant notes
+        :return: dataframe with relevant notes, thisn one has only 2 columns, CNS and Note Text, the note text is from
+        the types of notes that we care about in the inference pipeline. This is an intermediate object to it will not be returned in the
+        pipeline
         """
         for_preprocessing = merged_notes[merged_notes["Note Type"].isin(note_types)]
         for_preprocessing = for_preprocessing.groupby(group_cols)
@@ -155,6 +159,18 @@ class Preprocess:
         return relevant_notes
 
     def _remove_sections(self, relevant_notes, raw_notes, section_remover, keep_unlabelled=True, anonymize=False, ):
+        """
+        take all the relevant notes but remove all the sections that we do not care about, these are things like vaccinations, vitals etc
+        I am using medspacy for this. This reduces the number of tokens that need to be processed so that a CPU bound llamacpp server actually
+        finishes the job.
+        :param relevant_notes: output of _get_relevant_notes
+        :param raw_notes: This is only needed if we need to anonymize the notes, because if I don't know the name of the patient I cannot remove it.
+        :param section_remover: SectionRemover object, see above
+        :param keep_unlabelled: If we are not sure about what a section may be then we decide to keep it or not.
+        I'm defaulting to True, there are usually not that many of them but some pop here an there.
+        :param anonymize: Whether to anonymize the notes or not, this will remove the patient name from the notes.
+        :return:
+        """
         processed_notes = []
         for csn, note in zip(relevant_notes["CSN"], relevant_notes["Note Text"]):
             note_text = section_remover.remove_sections(note, keep_unlabelled)

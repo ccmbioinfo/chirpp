@@ -2,7 +2,7 @@
 pandas~=2.1.0 # this is to avoid the cursor thing, I am stil not sure how to fix it
 Levenshtein
 numpy
-sqlalchemy
+sqlalchemy==1.4.54
 python-dotenv
 psycopg2
 chonkie
@@ -17,3 +17,5 @@ requests
 certifi
 jsonschema
 einops
+cognee
+openpyxl

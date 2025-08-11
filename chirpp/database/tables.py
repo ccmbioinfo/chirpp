@@ -111,7 +111,6 @@ class ProcessedNotes(Base):
     __table_args__ = (Index('ix_note_text_ts_vector',
                             note_text_ts_vector, postgresql_using='gin'), )
 
-
 class Cases(Base):
     __tablename__ = "chirpp_report"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
@@ -146,7 +145,6 @@ class Cases(Base):
     sports_code = Column(Integer)
     # this is the sections removed notes these are used for inference for the most part
 
-
 # these are the custom labels that are created for different research purposes
 class CustomLabels(Base):
     __tablename__ = "custom_labels"
@@ -175,7 +173,6 @@ class Users(Base):
     email=Column(String)
     password=Column(String)
     active=Column(Boolean)
-
 
 class Managers(Base):
     __tablename__="managers"

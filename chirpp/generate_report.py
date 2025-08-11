@@ -5,13 +5,11 @@ import os
 from datetime import datetime
 
 import pandas as pd
-import yaml
+
 from torch.cuda import is_available
 from transformers import logging as hf_logging
 from dotenv import dotenv_values
 from sqlalchemy import create_engine
-
-from build.lib.chirpp.generate_report import inference_notes
 
 hf_logging.set_verbosity_error()
 
@@ -23,7 +21,6 @@ from chirpp.inference.inference import Inference, LlamaCppServer, SemanticChunki
 #TODO deal with postprocess
 #TODO deal with database
 from chirpp.database.database import DataBase
-
 
 parser = arg.ArgumentParser(description='Preprocess notes file for inference')
 parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
