@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from chirpp.database import utils
 
-#TODO need a space to fix column names
 
+# a lot of the methods rely on other functions returning errors, in this instance I think it makes sense because most of
+# these are just sql queries, so we can just return the error message and let the user handle it.
 class DataBase:
     """
     this is the base database class to add/update notes, I'm not sure if we will ever remove them, we might remove
@@ -80,39 +81,44 @@ class DataBase:
 
     #This will be hardcoded because there needs to be a match between the embedding dict and the
     # database table columns, using a json for a flexible solution defeats the purpose of pgvector
-    def import_processed_notes(self, csns, processed_notes, embedding_dict):
+    def import_processed_notes(self, inference_notes, chunker ):
         """
-        This will take the processed notes and the embedings dictionary {model_name:embedding_vector} and add them
-        to the database
-        :param processed_notes: output or section remover on the triage and provider notes
-        :param embedding_dict: output of huggingface embeddings
-        :return: nothing update the database or raise errors
+        This imports the processed notes embeddings to the database, we are already creating this in the generate_report.py
+        this is a dataframe that does not need to take any further processing
+        :param inference_notes: inference notes databframe,
+        :return:
         """
-        notes_table=self.meta.tables["processed_notes"]
-        num_notes=len(processed_notes)
-        keys=list(embedding_dict.keys())
+        inference_notes["embeddings"] = None
+        inference_notes["embeddings"] = chunker.get_embeddings(inference_notes["processed_notes"])
+        inference_notes=inference_notes[["CSN", "processed_notes", "embeddings"]].rename(columns={"CSN":"csn",
+                                                                                                 "processed_notes":"note_text",
+                                                                                                 "embeddings":"embeddings"})
+        inference_notes.to_sql("processed_notes", self.engine, if_exists="append", index=False)
 
-        old_csns = select(self.tables["processed_notes"].c.csn)
-        old_csns = [item[0] for item in self.session.execute(old_csns).fetchall()]
-        
-        
-        for key in keys:
-            if embedding_dict[key].shape[0] != num_notes:
-                raise ValueError("embedding shape does not match number of notes")
-            else:
-                for i in range(num_notes):
-                    if csns[i] not in old_csns:
-                        statement = notes_table.insert().values(csn=csns[i],
-                                                            note_text=processed_notes[i],
-                                                            jina_match_embed=embedding_dict["text-matching"][i, :],
-                                                            jina_pass_embed=embedding_dict["retrieval.passage"][i, :],
-                                                            jina_sep_embed=embedding_dict["separation"][i, :],
-                                                            jina_class_embed=embedding_dict["classification"][i, :],
-                                                            jina_query_embed=embedding_dict["retrieval.query"][i, :], )
-                        self.session.execute(statement)
-                        self.session.commit()
-                    else:
-                        continue
+    def import_chunked_notes(self, merged_notes, chunker):
+        merged_notes=merged_notes.rename(columns={"CSN":"csn"})
+        note_ids=pd.read_sql(f"SELECT csn, id FROM notes where csn in ({','.join(merged_notes['csn'].tolist())})", self.engine)
+
+        merged_notes=merged_notes.merge(note_ids, how="left", on="CSN")
+
+        chunked_notes = {
+            "note_id": [],
+            "note_index": [],
+            "chunk_index": [],
+            "chunk_text": [],
+            "embeddings": []}
+
+        for note_index, (note_id, note) in enumerate(zip(merged_notes["id"].tolist(), merged_notes["Note Text"].tolist())):
+            chunks = chunker.chunk(note)
+            for chunk_index, chunk in enumerate(chunks):
+                chunked_notes["note_id"].append(note_id)
+                chunked_notes["note_index"].append(note_index)
+                chunked_notes["chunk_number"].append(chunk_index)
+                chunked_notes["chunk_text"].append(chunk)
+                chunked_notes["embeddings"].append(chunker.get_embedding(chunk))
+
+        chunked_notes = pd.DataFrame(chunked_notes)
+        chunked_notes.to_sql("chunked_notes", self.engine, if_exists="append", index=False)
 
     # use this to pass a set of raw reports, this will be a bunch of joins
     # I need to select Triage and ED Provider notes from the database and pass it ot generate report
@@ -169,6 +175,9 @@ class DataBase:
             'ctas':'CTAS', 'note_type':'Note Type', 'author_type':'Author Type',
             'author_service':'Author Service', 'note_text':'Note Text',
         })
+
+        # this is there to keep up apparences, because these columns are sometimes used in the generate_report.py
+        # they are not crucial to the report generation but are there for additional features and selection methods
         if "LINE" not in visits.columns:
             visits["LINE"]=1
 

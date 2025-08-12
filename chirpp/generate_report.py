@@ -21,6 +21,7 @@ from chirpp.inference.inference import Inference, LlamaCppServer, SemanticChunki
 #TODO deal with postprocess
 #TODO deal with database
 from chirpp.database.database import DataBase
+from chirpp.postprocess.postprocess import PostProcess
 
 parser = arg.ArgumentParser(description='Preprocess notes file for inference')
 parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
@@ -122,10 +123,9 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing")
 # one limitation is here that we can only use one model at a time, we start and stop the server with each model.
 # this adds couple of minutes to the inference time.
 
-#pipelines takes precendence, for now.
-summaries=inference.server_inference("summarization", notes=inference_notes["processed_notes"], summary=True)
-
-
+#TODO need to add model cleanup to all the llamacpp inference things, this will depend on how reliable the the models are when
+# they are being used for inference via the openai api.
+summaries=inference.server_inference("summarization", notes=inference_notes["processed_notes"])
 
 inference_notes["PHAC Narrative"] = summaries
 
@@ -180,28 +180,9 @@ area=inference.server_inference("area",
 inference_notes["area"]=None
 inference_notes["area"][inference_notes["is_chirpp"]] = area
 
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings for RAG")
 
-inference_notes["embeddings"]=None
-inference_notes["embeddings"][inference_notes["is_chirpp"]] = inference.chunker.get_embeddings(inference_notes["processed_notes"][inference_notes["is_chirpp"]])
-
-chunked_notes={"note_index":[],
-               "chunk_index":[],
-               "chunk_text":[],
-               "embeddings":[]}
-
-for note_index, note in enumerate(merged_notes["Note Text"].tolist()):
-    chunks= inference.chunker.chunk(note)
-    for chunk_index, chunk in enumerate(chunks):
-        chunked_notes["note_index"].append(note_index)
-        chunked_notes["chunk_index"].append(chunk_index)
-        chunked_notes["chunk_text"].append(chunk)
-        chunked_notes["embeddings"].append(inference.chunker.get_embedding(chunk))
-
-chunked_notes = pd.DataFrame(chunked_notes)
-
-
-#TODO stopped here, need to continue with postprocessing
+### POSTPROCESS
+#TODO this is waiting on selecting a good model for autofill
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Report")
 
@@ -212,16 +193,16 @@ postprocess = postprocess.autofill()
 #why not
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Creating Excel Report")
 postprocess.create_report(args.outname)
-
-
-#TODO this need to be refactored to always use the database
+### POSTPROCESS
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Moving things to the database")
 
 database.process_dump(preprocess.raw_notes)
 database.process_report(postprocess.sheet2)
-database.import_processed_notes(inference_notes["CSN"].tolist(),
-                                inference_notes[params["inference"]["note_col"]].tolist(),
-                                embeddings)
+
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Embeddings for RAG")
+database.import_processed_notes(processed_notes, inference.chunker)
+database.import_chunked_notes(merged_notes, inference.chunker)
+
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Done!")
