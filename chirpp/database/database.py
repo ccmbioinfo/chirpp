@@ -6,6 +6,7 @@ from sqlalchemy import MetaData, select
 from sqlalchemy.orm import Session
 
 from chirpp.database import utils
+from chirpp.inference.utils import cosine_similarity
 
 
 # a lot of the methods rely on other functions returning errors, in this instance I think it makes sense because most of
@@ -248,20 +249,34 @@ class DataBase:
             self.session.execute(statement)
             self.session.commit()
 
-    #TODO
-    def previous_visits(self, mrn):
+    def previous_visits(self, merged_notes):
         """
         get previous visits for a patient
-        :param mrn: a patient MRN
-        :return: a list of csns for previous visits an the text of the most similar visit based on phac narrative and cosine similarity
+        :param mrn: a list of mrns to get previous visits for
+        :return: return a list of csns and phac narratives for the patient, currently looking
         """
         visits_table = self.tables["visits"]
-        patients_table = self.tables["patients"]
 
-        visits = self.session.execute(select(visits_table.c.mrn, visits_table.c.phac_narrativie).\
-                                      where(visits_table.c.mrn == mrn)).fetchall()
+        previous_visits = self.session.execute(select(visits_table.c.mrn, visits_table.c.csn, visits_table.c.phac_narrativie).\
+                                      where(visits_table.c.mrn.in_(merged_notes["MRN"].tolist())))\
+            .fetchall()
 
+        visit_texts=[]
+        for mrn in merged_notes["mrn"]:
+            patient_visits=previous_visits[previous_visits["mrn"]==mrn]
+            if patient_visits.shape[0]==0:
+                visit_texts.append(None)
+            elif patient_visits.shape[0]==1:
+                visit_texts.append("\n".join([patient_visits["csn"].iloc[0],
+                                              patient_visits["phac_narrative"].iloc[0]]))
+            else:
+                combined_texts=[]
+                for csn, text in zip(patient_visits["csn"].tolist(), patient_visits["phac_narrative"].tolist()):
+                    visit_text="\n".join([csn, text])
+                    combined_texts.append(visit_text)
+                visit_texts.append("\n\n".join(combined_texts))
 
-        return visits
+        return visit_texts
+
 
 

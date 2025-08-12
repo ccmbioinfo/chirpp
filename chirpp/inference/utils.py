@@ -1,4 +1,5 @@
 import re
+import numpy as np
 
 def prepare_user_prompt(prompt, note):
     return "\n".join([prompt, note])
@@ -28,3 +29,18 @@ def process_results(output_list, out_type=str, summary=False):
                 clean[out[0]]=out_type(out[1].replace(",", "").replace(".0", ""))
         cleaned_output.append(clean)
     return cleaned_output
+
+
+def cosine_similarity_numpy(vec_a, vec_b):
+    """
+    Calculate the cosine similarity between two vectors, there is no need to overdo it with
+    sentence transformers or other dependencies, the number of things that will be colleceted and compared
+    will not exceed a few hundred.
+    :param vec_a: vector a, in this case the embedding vector from from chunker
+    :param vec_b: same as above for a different vector
+    :return: the cosine similarity between the two vectors
+    """
+    a = np.array(vec_a, dtype=float)
+    b = np.array(vec_b, dtype=float)
+    dot_product = np.dot(a, b)
+    return dot_product / (np.linalg.norm(a) * np.linalg.norm(b))

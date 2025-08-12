@@ -204,5 +204,4 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Em
 database.import_processed_notes(processed_notes, inference.chunker)
 database.import_chunked_notes(merged_notes, inference.chunker)
 
-
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Done!")
