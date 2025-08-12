@@ -7,7 +7,7 @@ from chirpp.database.utils import calculate_age
 
 #TODO this needs to be refactored to utils so I can use it on database prepare report
 class PostProcess:
-    def __init__(self, raw_notes, inference_notes, params):
+    def __init__(self, merged_notes, inference_notes, params):
         """
         create a report template to be autofilled this contains all the cases and all the columns that needs to be
         filled, this template will then be split into 2 sheets to be saved as an excel file
@@ -18,19 +18,20 @@ class PostProcess:
         """
         self.params = params
 
-        raw_notes["Arrival Date"] = pd.to_datetime(raw_notes["Arrival Date"])
-        raw_notes["Date of Birth"] = pd.to_datetime(raw_notes["Date of Birth"])
+        merged_notes["Arrival Date"] = pd.to_datetime(merged_notes["Arrival Date"])
+        merged_notes["Date of Birth"] = pd.to_datetime(merged_notes["Date of Birth"])
         inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"])
-        inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
-        inference_notes = inference_notes[['CSN',  'probs', 'is_chirpp', 'PHAC Narrative',
-                                           'pre_processed', 'io', 'intent', 'sub',
+        inference_notes = inference_notes[['CSN',  'processed_notes' 'probs',
+                                           'is_chirpp', 'PHAC Narrative',
+                                           'intent', 'substance', 'io', 'sub',
                                            'location', 'area', 'ampm']]
-        merged = raw_notes.merge(inference_notes, how="inner", on=["CSN"])
+        merged = merged_notes.merge(inference_notes, how="inner", on=["CSN"])
         merged["Arrival Time"] = pd.to_datetime(merged["Arrival Time"].astype(str))
         merged = merged.groupby(["MRN", "Arrival Date", "Arrival Time"])
 
         report_df = pd.DataFrame(columns=self.params["report_header"])
 
+        #TODO need to cleanup the json responses form the inference pipeline
         template = []
         for _, data in merged:
             group_df = report_df.copy()
@@ -56,13 +57,12 @@ class PostProcess:
             group_df["Problem List"] = data["Problem List"].drop_duplicates()
             group_df["is_chirpp"] = data["is_chirpp"].drop_duplicates()
             group_df["PHAC Narrative"] = data["PHAC Narrative"].drop_duplicates()
-            group_df["I/O"] = data["io"].drop_duplicates()
+            group_df["io"] = data["io"].drop_duplicates()
             group_df["IN"] = data["intent"]
-            group_df["sub"] = data["sub"]
-            group_df["AREA"]=data["area"]
-            group_df["LOCATION"]=data["location"]
-            group_df["AM/PM"]=data["ampm"]
-
+            group_df["substances"] = data["sub"]
+            group_df["area"]=data["area"]
+            group_df["location"]=data["location"]
+            group_df["ampm"]=data["ampm"]
 
             for_narrative = data[data["Note Type"].isin(self.params["note_types"])]
             for_narrative["Note Type"] = pd.Categorical(for_narrative["Note Type"],
@@ -75,7 +75,7 @@ class PostProcess:
             narrative = "\n\n".join(narrative)
             group_df["SK Narrative"] = narrative
             group_df["Disposition"] = data['Disposition'].drop_duplicates().astype(str)
-            group_df["pre_processed"] = data["pre_processed"].drop_duplicates().astype(str)
+            group_df["processed_notes"] = data["processed_notes"].drop_duplicates().astype(str)
             group_df.fillna('')
             template.append(group_df)
         template = pd.concat(template)

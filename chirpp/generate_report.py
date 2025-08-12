@@ -123,10 +123,7 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing")
 # this adds couple of minutes to the inference time.
 
 #pipelines takes precendence, for now.
-if "summarization" not in inference_config["pipelines"].keys():
-    summaries=inference.server_inference("summarization", notes=inference_notes["processed_notes"], summary=True)
-else:
-    summaries=inference.run_pipeline(inference_config["pipelines"]["summarization"], inference_notes["processed_notes"].tolist())
+summaries=inference.server_inference("summarization", notes=inference_notes["processed_notes"], summary=True)
 
 
 
@@ -146,60 +143,39 @@ inference_notes["intent"][inference_notes["is_chirpp"]] = intent
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying substance use")
 
-if not gpu:
-    substance=inference.server_inference("substance",
+substance=inference.server_inference("substance",
                                       notes=inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
-else:
-    substance=inference.run_pipeline(inference_config["pipelines"]["substance"],
-                                     inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
 
 inference_notes["substance"] = None
 inference_notes["substance"][inference_notes["is_chirpp"]] = substance
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying inside/outside")
 
-if not gpu:
-    io=inference.server_inference("io",
+io=inference.server_inference("io",
                               notes=inference_notes["processed_notes"]["is_chirpp"])
-else:
-    io=inference.run_pipeline(inference_config["pipelines"]["io"],
-                                     inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
-
 inference_notes["io"] = None
 inference_notes["io"][inference_notes["is_chirpp"]] = io
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying am/pm")
 
-if not gpu:
-    am_pm=inference.server_inference("am_pm",
+am_pm=inference.server_inference("am_pm",
                               notes=inference_notes["processed_notes"]["is_chirpp"])
-else:
-    am_pm = inference.run_pipeline(inference_config["pipelines"]["am_pm"],
-                                       inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
 
 inference_notes["am_pm"] = None
 inference_notes["am_pm"][inference_notes["is_chirpp"]] = substance
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying Location")
 
-if not gpu:
-    location=inference.server_inference("location",
+location=inference.server_inference("location",
                               notes=inference_notes["processed_notes"]["is_chirpp"])
-else:
-    location = inference.run_pipeline(inference_config["pipelines"]["location"],
-                                       inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
 
 inference_notes["location"]=None
 inference_notes["location"][inference_notes["is_chirpp"]] = location
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying Area")
 
-if "area" not in inference_config["pipelines"].keys():
-    area=inference.server_inference("area",
+area=inference.server_inference("area",
                               notes=inference_notes["processed_notes"]["is_chirpp"])
-else:
-    area = inference.run_pipeline(inference_config["pipelines"]["area"],
-                                       inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist())
 
 inference_notes["area"]=None
 inference_notes["area"][inference_notes["is_chirpp"]] = area
@@ -229,9 +205,7 @@ chunked_notes = pd.DataFrame(chunked_notes)
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Report")
 
-params["post_process"]["pos_complaints"] = params["inference"]["pos_complaints"]
-params["post_process"]["terms_to_fix"] = params["pre_process"]["terms_to_fix"]
-postprocess = PostProcess(preprocessed_notes.raw_notes, inference_notes, params["post_process"])
+postprocess = PostProcess(merged_notes, inference_notes, params["post_process"])
 postprocess = postprocess.autofill()
 
 

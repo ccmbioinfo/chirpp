@@ -22,8 +22,6 @@ from chirpp.inference.utils import *
 class NoModelError(Exception):
     pass
 
-
-# noinspection PyTypeChecker
 class LlamaCppServer:
     def __init__(self, config, binary_path):
         """Initialize Llama.cpp server manager.

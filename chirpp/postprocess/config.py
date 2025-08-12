@@ -1,3 +1,6 @@
+from chirpp.inference.config_llama import inference_config
+from chirpp.preprocess.config import preprocess_config
+
 post_process={
   "cc_filter": [ 'depression / suicidal / deliberate self harm', 'ingestion', 'chemical', 'burn',
                'concern for patient wellfare', 'overdose ingestion', 'substance misuse / intoxication',
@@ -18,4 +21,7 @@ post_process={
                 'Consult Follow Up', 'Admission', 'Discharge Summary', 'Progress Notes',
                 'Assessment & Plan Note',  'ED Trauma Note', 'ED Trauma Notes',
                 'ED Procedure Note', 'Procedures','Op Note', 'Transfer In / Advice Note' ],
+
+    "pos_complaints": inference_config["pos_complaints"],
+    "terms_to_fix": preprocess_config["terms_to_fix"]
 }
