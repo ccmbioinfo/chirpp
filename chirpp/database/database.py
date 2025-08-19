@@ -2,11 +2,12 @@ from datetime import datetime
 
 import pandas as pd
 
-from sqlalchemy import MetaData, select
-from sqlalchemy.orm import Session
+from sqlalchemy import MetaData, select, Table, Column, Integer, String, ForeignKey
+from sqlalchemy.orm import sessionmaker
+
 
 from chirpp.database import utils
-from chirpp.inference.utils import cosine_similarity
+
 
 
 # a lot of the methods rely on other functions returning errors, in this instance I think it makes sense because most of
@@ -21,7 +22,7 @@ class DataBase:
         self.engine = engine
         self.meta = MetaData(bind=self.engine)
         self.meta.reflect(bind=self.engine)
-        self.session = Session(self.engine)
+        self.session = sessionmaker(self.engine)
         self.tables = self.meta.tables
         self.get_mrns()
         self.get_csns()
@@ -230,7 +231,7 @@ class DataBase:
         sheet1, sheet2=utils.prepare_report(visits, cases, patients, new_problems_df)
         return sheet1, sheet2
 
-    #TODO this is not implemented yet, we need to figure out how to update the raw data
+    #TODO this is not implemented yet, we need to figure out how to update the raw data, or if needed at all
     def update_raw(self, txt_file):
         pass
 
@@ -277,6 +278,13 @@ class DataBase:
                 visit_texts.append("\n\n".join(combined_texts))
 
         return visit_texts
+
+    def get_schema(self):
+        """
+        returns the database schema using the self.metadata object
+        :return:
+        """
+
 
 
 

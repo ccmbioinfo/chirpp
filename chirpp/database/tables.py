@@ -23,7 +23,7 @@ class Patients(Base):
     mrn = Column(Integer, index=True, primary_key=True)  # this is mrn
     dob = Column(Date)
 
-
+#TODO add phac_embeddings to the database and calculate phac embeddings during generate report
 class Visits(Base):
     __tablename__ = "visits"
     csn = Column(Integer, index=True, primary_key=True)
@@ -47,6 +47,7 @@ class Visits(Base):
     city = Column(String)
     province = Column(String)
     probs=Column(Float)
+    phac_embeddings = Column(Vector(1024))
     sk_narrative_vector = Column(TSVector(), Computed(
         "to_tsvector('english', sk_narrative)",
         persisted=True))

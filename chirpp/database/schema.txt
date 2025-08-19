@@ -1,0 +1,101 @@
+Database: PostgreSQL
+
+Table: patients Description: Demographic data about patients Columns:
+mrn: Integer, Primary Key, unique patient identifier
+dob: Date
+
+Table: visits Description: Information about each patient visit Columns:
+csn: Integer, Primary Key, unique visit identifier
+sex: String, patient’s biological sex (e.g., M, F)
+age: Integer
+mrn: Integer, Foreign Key (patients.mrn)
+arrival_date: Date
+arrival_time: Time
+day_of_week: String
+sk_narrative: Text
+phac_narrative: Text
+postal_code: String
+chief_complaint: String
+diagnosis: String
+disposition: String, patient disposition
+ctas: Integer, nullable, triage level
+los: Float, length of stay in hours
+processed: Boolean, whether this visit has been processed
+address: String
+city: String
+province: String
+probs: Float, probability of referral to chirpp_report
+sk_narrative_vector: TSVector, Computed (to_tsvector('english', sk_narrative)), full-text search vector for sk_narrative
+phac_narrative_vector: TSVector, Computed (to_tsvector('english', phac_narrative)), full-text search vector for phac_narrative
+
+Table: referrals Description: Referrals of a patient to different units Columns:
+id: Integer, Primary Key
+csn: Integer, Foreign Key (visits.csn)
+referrals: String
+
+Table: problems Description: Problems described by the patient or identified by the doctor Columns:
+id: Integer, Primary Key
+csn: Integer, Foreign Key (visits.csn)
+problem: String
+
+Table: notes Description: Clinical notes for each patient and visit Columns:
+id: Integer, Primary Key
+csn: Integer, Foreign Key (visits.csn)
+note_type: String
+author_type: String
+author_service: String
+note_text: Text
+notes_ts_vector: TSVector, Computed (to_tsvector('english', note_text)), full-text search vector for note_text
+
+Table: chirpp_report Description: Injury reports for relevant patient visits Columns:
+id: Integer, Primary Key
+csn: Integer, Foreign Key (visits.csn)
+injury_date: Date
+injury_hour: Integer
+injury_min: Integer
+am_pm: String
+i_o: String, whether incident happened inside or outside, categories: {i: inside, o: outside}
+location: Integer, categories: {11: patients' own farm house, 21: farm house belonging to someone else (including relatives), 12: patients' own home apartment, condo, 22: home, apartment or condo belonging to someone else, 13: dormitory, school boarding or hostel where the patient is staying, 23: someone else's dormitory, school boarding or hostel, 14: patient's trailer home or motorhome, 24: someone else's trailer home or motor home, 19: patients' cottage, 29: someone else's cottage, 31: institutional home, shelter, group home or halfway home, 32: retirement or nursing home, 33: prison, jail or other detention centers, 39: other residential institutions for example ronald mac donald house, 41: daycare or preschool, 42: school or kindergarden, 43: tertiary adult education for example university or military college, 44: public administration building like city hall, fire/police station, courthouse, 45: place for arts like museum, performance halls, concert hall, library, 49: other kinds of institutions like church, military base, 51: hospital, 52: community health center, detox center, dental office, doctor's office (not in a hospital), 61: amusement park, 62: public park, 63: aquatic center, like a water park or swimming pool, 64: stadium or arena for sports, 65: community center, 66: fitness center, gym (not in school), martial arts center/dojo, dance studio, ballet school, 67: race track for motor sports and horseback, 68: other land based sports facility like golf course, skate park (not ice skating), rodeo grounds, 69: water based sports like yacht club, marina, fishing lodge, kayak club, rowing club, 70: snow/ice based sports facility like ski resort, ski cabin, 71: skate park for ice skating, 79: facility for recreation like arcade, bowling alley, bingo hall, 81: highway, 82: other roads like alley, lane, bus stop, 91: shop, shopping mall or other commerce centers, 92: restaurants, bars, coffee shops, 93: entertainment place like bar, night club, casino, strip club, 94: airport, train/bus/subway station ferry terminal, 95: service or gas station for automotives, 96: warehouse, 97: office building, 98: hotel/motel/bed and breakfast, resort, 109: other commercial and trade area like bank, laundromat, funeral home, veterinarian office, 141: remote undeveloped place, swamp, snowmobile track, 142: railway tracks not including station, 143: camp grounds, trailer park, 144: onboard a vehicle like plane, train, bus, ship, ferry, 111: construction/demolition site, 112: factory, mill, manufacturing site, 119: other industrial area, 121: mine, oil or gas well, quarry, sandpit, 131: farm, barn, coop but excluding the farmhouse}
+area: Integer, categories: {11: bathroom, toilet, change room, 12: bedroom, 13: classroom, daycare indoors, 14: dorm room, 15: hall, foyer, waiting room, emergency room, 16: kitchen, 17: laundry room, 18: dining area, cafeteria, 19: living room, rec room, den, 20: office, 21: basement, 22: spectator area in a church, theatre, 31: garage, carport, parking lot, 32: workshop, 33: agricultural buildings like silo or piggery, 34: stable, barn, 35: shed, 36: other specialized buildings like greenhouse, 41: escalator, elevator, 42: stairs, 43: porch, deck balcony, veranda, 44: roof, 51: paved road (assume paved unless specified), 52: unpaved road, 53: driveway, 54: parking lot, 55: sidewalk, bus stop, 56: median, strip, traffic island, 57: tunnel, trench, ditch, 58: bike path, 59: playground not part of a school, 60: garden, backyard, school yard, 61: pasture, field, other outdoor animal area, 62: cliff, rock face, 63: trails, 71: gym, fitness room, yoga studio, not part of a school, 72: sports field, track, including indoor spaces, 73: tennis, squash etc. court, 74: swimming pool, 75: ice rink, 76: concrete rink for skating, 77: locker room, change room, 78: splash pad, 81: beach, shore, riverbank, 82: dam, 83: river, lake, creek, pond, 84: sea, ocean, 85: wharf, dock pier, 91: other exterior space, crawlspace, under porch, veranda, 92: other interior space like storage, attic etc}
+place: String, specific location of incident
+w4p: Integer
+no1: Integer, injury type, categories: {10: superficial bruises, abrasions, 11: open wound including minor cuts, 12: fracture, 13: dislocation, 14: sprain or strain, 15: injury to nerve, 16: injury to blood vessel like hemorrhage, 17: injury to muscle or tendon like rupture, 18: crushing injury, 19: traumatic amputation, 20: external burn or corrosion excluding eye injury or internal caustic burn, 21: frostbite, 22: insect, animal or human bite, 23: electrical injury, 24: eye injury including burn or corrosion, 25: dental injury, 26: injury to internal organs excluding inner ear, 27: soft tissue injury, 31: foreign body in external eyes, 32: foreign body in ear canal, 33: foreign body in nose, 34: foreign body in respiratory tract excluding nose, 35: foreign body in digestive tract, 36: foreign body in genital, urinary tract, 37: foreign body in soft tissue including splinters, 41: minor head injury, 42: concussion, 43: intracranial injury, 50: poisoning or toxic effect including intoxication, 51: drowning, near drowning or immersion, 52: asphyxia or other threat to breathing, 53: overexertion, heat/cold stress, 60: multiple injuries of more than one nature, 70: no injuries, 75: pulled elbow, 99: unspecified or no injury, 76: internal caustic burn, 77: penetrating wound like stabbing or gunshot}
+bp1: Integer, body part, categories: {110: head including skull and scalp, 120: face, 130: internal mouth, 135: specific head injury use this for eye, dental, nose injuries and foreign bodies, minor head injuries, concussions, intracranial injuries, 140: neck excluding spinal cord, 141: internal organs in the neck like trachea, 210: cervical spine, 220: thoracic spine, 230: lumber spine, 240: sacrum or coccyx, 250: other or unspecified spine, 310: thorax, ribs, heart, lungs, armpits, trachea, 315: upper back excluding scapula, 321: abdomen including all abdominal organs, 322: lower back, 323: pelvis including bladder, buttocks, genitals, 324: perineum, external genitalia, scrotum, 325: groin, 330: unspecified back, 410: shoulders, including scapula, 415: clavicle, 420: upper arm, 430: elbow, 440: forearm, 450: wrist, 460: hand, 470: finger or thumb, 510: hip, including neck of femur, 520: thigh, including femur, 530: knee, 540: lower leg, 550: ankle, 560: foot, 570: toe, 700: multiple injuries spanning multiple sections, 900: no specific body part including systemic injuries, 999: unspecified body part or no injury}
+no2: Integer, injury type, categories: {10: superficial bruises, abrasions, 11: open wound including minor cuts, 12: fracture, 13: dislocation, 14: sprain or strain, 15: injury to nerve, 16: injury to blood vessel like hemorrhage, 17: injury to muscle or tendon like rupture, 18: crushing injury, 19: traumatic amputation, 20: external burn or corrosion excluding eye injury or internal caustic burn, 21: frostbite, 22: insect, animal or human bite, 23: electrical injury, 24: eye injury including burn or corrosion, 25: dental injury, 26: injury to internal organs excluding inner ear, 27: soft tissue injury, 31: foreign body in external eyes, 32: foreign body in ear canal, 33: foreign body in nose, 34: foreign body in respiratory tract excluding nose, 35: foreign body in digestive tract, 36: foreign body in genital, urinary tract, 37: foreign body in soft tissue including splinters, 41: minor head injury, 42: concussion, 43: intracranial injury, 50: poisoning or toxic effect including intoxication, 51: drowning, near drowning or immersion, 52: asphyxia or other threat to breathing, 53: overexertion, heat/cold stress, 60: multiple injuries of more than one nature, 70: no injuries, 75: pulled elbow, 99: unspecified or no injury, 76: internal caustic burn, 77: penetrating wound like stabbing or gunshot}
+bp2: Integer, body part, categories: {110: head including skull and scalp, 120: face, 130: internal mouth, 135: specific head injury use this for eye, dental, nose injuries and foreign bodies, minor head injuries, concussions, intracranial injuries, 140: neck excluding spinal cord, 141: internal organs in the neck like trachea, 210: cervical spine, 220: thoracic spine, 230: lumber spine, 240: sacrum or coccyx, 250: other or unspecified spine, 310: thorax, ribs, heart, lungs, armpits, trachea, 315: upper back excluding scapula, 321: abdomen including all abdominal organs, 322: lower back, 323: pelvis including bladder, buttocks, genitals, 324: perineum, external genitalia, scrotum, 325: groin, 330: unspecified back, 410: shoulders, including scapula, 415: clavicle, 420: upper arm, 430: elbow, 440: forearm, 450: wrist, 460: hand, 470: finger or thumb, 510: hip, including neck of femur, 520: thigh, including femur, 530: knee, 540: lower leg, 550: ankle, 560: foot, 570: toe, 700: multiple injuries spanning multiple sections, 900: no specific body part including systemic injuries, 999: unspecified body part or no injury}
+no3: Integer, injury type, categories: {10: superficial bruises, abrasions, 11: open wound including minor cuts, 12: fracture, 13: dislocation, 14: sprain or strain, 15: injury to nerve, 16: injury to blood vessel like hemorrhage, 17: injury to muscle or tendon like rupture, 18: crushing injury, 19: traumatic amputation, 20: external burn or corrosion excluding eye injury or internal caustic burn, 21: frostbite, 22: insect, animal or human bite, 23: electrical injury, 24: eye injury including burn or corrosion, 25: dental injury, 26: injury to internal organs excluding inner ear, 27: soft tissue injury, 31: foreign body in external eyes, 32: foreign body in ear canal, 33: foreign body in nose, 34: foreign body in respiratory tract excluding nose, 35: foreign body in digestive tract, 36: foreign body in genital, urinary tract, 37: foreign body in soft tissue including splinters, 41: minor head injury, 42: concussion, 43: intracranial injury, 50: poisoning or toxic effect including intoxication, 51: drowning, near drowning or immersion, 52: asphyxia or other threat to breathing, 53: overexertion, heat/cold stress, 60: multiple injuries of more than one nature, 70: no injuries, 75: pulled elbow, 99: unspecified or no injury, 76: internal caustic burn, 77: penetrating wound like stabbing or gunshot}
+bp3: Integer, body part, categories: {110: head including skull and scalp, 120: face, 130: internal mouth, 135: specific head injury use this for eye, dental, nose injuries and foreign bodies, minor head injuries, concussions, intracranial injuries, 140: neck excluding spinal cord, 141: internal organs in the neck like trachea, 210: cervical spine, 220: thoracic spine, 230: lumber spine, 240: sacrum or coccyx, 250: other or unspecified spine, 310: thorax, ribs, heart, lungs, armpits, trachea, 315: upper back excluding scapula, 321: abdomen including all abdominal organs, 322: lower back, 323: pelvis including bladder, buttocks, genitals, 324: perineum, external genitalia, scrotum, 325: groin, 330: unspecified back, 410: shoulders, including scapula, 415: clavicle, 420: upper arm, 430: elbow, 440: forearm, 450: wrist, 460: hand, 470: finger or thumb, 510: hip, including neck of femur, 520: thigh, including femur, 530: knee, 540: lower leg, 550: ankle, 560: foot, 570: toe, 700: multiple injuries spanning multiple sections, 900: no specific body part including systemic injuries, 999: unspecified body part or no injury}
+notes: Text
+disp: Integer, patient disposition code, categories: {1: Leave against medical advice, 2: Advice only or some diagnostic testing, no treatment in the emergency department, 3: Treatment in the emergency department with suggested follow up with primary care physician, 4: Observation in the emergency department, with follow up primary care physician, 5: Observation in the emergency department with follow up by specialist or ED physician, 6: Treatment in the emergency department with follow up, consultation with other specialist in the same hospital or in another hospital for injury/poisoning/actual self harm (not ideation) treatment, 7: Admitted to the hospital for injury/poisoning/actual self harm (not ideation) treatment, 8: Admitted to the hospital for treatment not related to injury/poisoning/actual self harm (not ideation), 9: Dead on arrival or deceased in the emergency department}
+intent: Integer, general category for patient presentation, categories: {10: accident, 11: self harm, including not actual self harm but ideation, 12: sexual injuries, including assault and abuse, 13: parental neglects, not including sexual abuse, 14: partner abuse not including sexual assault, 15: physical assault and attack not sexual in nature, 16: undetermined, 19: Legal, police, war related injuries and all other categories}
+sub: Integer, whether substances are involved in the cause, categories: {1: yes, 2: no}
+sub_id: String, substance name if sub=1
+sd1: Integer, safety device, categories: {-1: Unknown, 0: no devices, 2: helmet, 3: sports padding, 4: protective boots or other clothing including sports related protective gear, 5: protective eyewear, 6: seatbelt if actively being used, 7: carseat, 8: airbag (if deployed), 10: life vest for floatation devices, 11: hard hat, 12: mouthguard, 19: baby gate}
+sd2: Integer, safety device, categories: {-1: Unknown, 0: no devices, 2: helmet, 3: sports padding, 4: protective boots or other clothing including sports related protective gear, 5: protective eyewear, 6: seatbelt if actively being used, 7: carseat, 8: airbag (if deployed), 10: life vest for floatation devices, 11: hard hat, 12: mouthguard, 19: baby gate}
+sd3: Integer, safety device, categories: {-1: Unknown, 0: no devices, 2: helmet, 3: sports padding, 4: protective boots or other clothing including sports related protective gear, 5: protective eyewear, 6: seatbelt if actively being used, 7: carseat, 8: airbag (if deployed), 10: life vest for floatation devices, 11: hard hat, 12: mouthguard, 19: baby gate}
+sd4: Integer, safety device, categories: {-1: Unknown, 0: no devices, 2: helmet, 3: sports padding, 4: protective boots or other clothing including sports related protective gear, 5: protective eyewear, 6: seatbelt if actively being used, 7: carseat, 8: airbag (if deployed), 10: life vest for floatation devices, 11: hard hat, 12: mouthguard, 19: baby gate}
+sd5: Integer, safety device, categories: {-1: Unknown, 0: no devices, 2: helmet, 3: sports padding, 4: protective boots or other clothing including sports related protective gear, 5: protective eyewear, 6: seatbelt if actively being used, 7: carseat, 8: airbag (if deployed), 10: life vest for floatation devices, 11: hard hat, 12: mouthguard, 19: baby gate}
+sports_code: Integer, categories: {1: organized sports, 2: not organized sports, 3: unknown, 4: not applicable (not a sports related injury)}
+
+Table: processed_notes Description: Notes that have been processed to remove unwanted sections Columns:
+id: Integer, Primary Key
+csn: Integer, Foreign Key (visits.csn)
+note_text: Text
+note_text_ts_vector: TSVector, Computed (to_tsvector('english', note_text)), full-text search vector for note_text
+embeddings: Vector(1024), vector embeddings for note text
+
+Table: chunked_notes Description: Notes that have been semantically chunked for semantic search and retrieval Columns:
+id: Integer, Primary Key
+note_id: Integer, Foreign Key (notes.id)
+chunk_number: Integer
+chunk_text: Text
+embeddings: Vector(1024), vector embeddings for chunked text
+
+Relationships:
+visits.mrn -> patients.mrn
+referrals.csn -> visits.csn
+problems.csn -> visits.csn
+notes.csn -> visits.csn
+chirpp_report.csn -> visits.csn
+processed_notes.csn -> visits.csn
+chunked_notes.note_id -> notes.id'

@@ -167,6 +167,3 @@ def prepare_report(visits, cases, patients, problems):
 
     return sheet1, sheet2
     
-        
-
-    

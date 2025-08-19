@@ -1,7 +1,6 @@
 #! python
 
 import argparse as arg
-import os
 from datetime import datetime
 
 import pandas as pd
@@ -126,15 +125,17 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing")
 #TODO need to add model cleanup to all the llamacpp inference things, this will depend on how reliable the the models are when
 # they are being used for inference via the openai api.
 summaries=inference.server_inference("summarization", notes=inference_notes["processed_notes"])
+summary_embeddings=inference.embed_notes(summaries, chunk=False)
 
 inference_notes["PHAC Narrative"] = summaries
+inference_notes["phac_embeddings"] = summary_embeddings
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying intent")
 
 pipeline=inference.load_pipeline(inference_config["pipelines"]["intent"]["model"],
                                  inference_config["pipelines"]["intent"]["num_labels"],)
 
-intent=inference.run(pipeline, inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist(),
+intent=inference.run_pipeline(inference_notes["processed_notes"][inference_notes["is_chirpp"]].tolist(),
                     inference_config["pipelines"]["intent"]["labels"],
                     inference_config["pipelines"]["intent"]["cutoff"],)
 
