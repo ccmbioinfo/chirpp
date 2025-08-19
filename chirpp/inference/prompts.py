@@ -420,3 +420,25 @@ code indicators (```). You do not need to specify that this is a JSON.
 Clinical Note Text:
 
 """
+
+keyword_prompt="""
+You are an expert text analysis AI. Your task is to identify key terms and concepts from a given text and assign a weight to their importance.
+For each input text, you will generate a dictionary". This will be used for a ts_query search in a postgresql database that contains clinical notes. 
+
+The dictionary will contain words as keys and their weight as values, The **word** should be a highly relevant keyword, proper noun, or 
+critical term directly representing the main topics and entities discussed in the text. The **weight** will be an integer from 1 to 4, where **1 signifies the highest importance** and **4 the lowest importance**. 
+These are the terms a user would typically search for to find this text or that best summarize its core content. Words can have the same weight if they are equally important. 
+
+Do not include words that are generic, stop words, common verbs/adjectives that do not convey specific subject matter, 
+or terms too broad or irrelevant to be considered specific keywords. 
+
+If we are looking for the absence or negation of a term or concept preceede the keyword with ! e.g. !word.
+
+Prioritize single words or compound nouns that act as distinct keywords. Avoid including numbers unless they are part of a specific entity (e.g., "COVID-19").
+
+Return *only* the JSON dictionary. Do not include any other text, explanations, or conversational filler.
+
+Example:
+{"word1":1, "word2":1, "word3":4} where word1 and word2 are equally important. 
+
+"""

@@ -3,9 +3,8 @@ import numpy as np
 from smolagents import Tool
 
 from chirpp.database.database import DataBase
+from chirpp.inference.inference import KeywordGenerator
 from chirpp.inference.utils import semantic_search, keyword_search
-
-#TODO init chunker and embedding model
 
 schema=[]
 with open("schema.txt") as f:
@@ -98,6 +97,39 @@ class SemanticSearchTool(Tool):
 
     def forward(self, embeddings: np.ndarray, database: DataBase, table: str, similarity_metric: str, cutoff: float):
         results=semantic_search(embeddings, table, database, similarity_metric, cutoff)
+        return results
+
+class KeywordGeneratorTool(Tool):
+    name = "keyword_generator"
+    description = """Given an nlp query genereate keywords for keyword search with or without weights for tsvector, currently 
+                   we can only generate positive keywords"""
+    inputs = {
+        "model":{
+            "type":"str",
+            "description": """name of the model to use for keyword generation"""
+        },
+        "prompt":{
+            "type":"str",
+            "description": """system prompt to use for keyword generation"""
+        },
+        "cache_dir":{
+            "type":"str",
+            "description": """path to cache directory to use for the model"""
+        },
+        "query": {
+            "type": "str",
+            "description": """query to generate keywords for"""
+        },
+        "weights": {
+            "type": "bool",
+            "description": """whether to use return weights  for tsvector or not"""
+        }
+    }
+    output_type = "dict or list"
+
+    def forward(self, model, prompt, query, cache_dir=None, weights=False):
+        generator=KeywordGenerator(model, prompt, cache_dir)
+        results=generator.parse(query, weights)
         return results
 
 

@@ -19,3 +19,4 @@ jsonschema
 einops
 cognee
 openpyxl
+smolagents

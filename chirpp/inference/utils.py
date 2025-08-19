@@ -51,6 +51,17 @@ def cosine_similarity(vec_a, vec_b):
 # TODO enable weights, the form could be
 # TODO enable searching for sk narrative, not sure if important because we can search notes
 def keyword_search(keywords, table, database, ranking_method="ts_rank_cd", normalization=8):
+    """
+    perform a ts vector search on a given table, this will be used for the full text search
+    :param keywords: a dictionary with the keywords to search for, can be in or not in, if in will search for all of them,
+    the format of the dictionary is {"in": ["keyword1", "keyword2"], "not_in": ["keyword3", "keyword4"]}, the case of dict keys
+    does matter
+    :param table: which table to use only visits, notes, and processed notes are supported
+    :param database: a chirpp.database.database.DataBase instance
+    :param ranking_method: ranking method to use, defaults to ts_rank_cd or ts_rank.
+    :param normalization: normalization method see https://www.postgresql.org/docs/current/textsearch-controls.html default is 8
+    :return: a dataframe with the csn and rank of the search results
+    """
     appropriate_tables={"visits":"phac_narrative_vector", "notes":"notes_ts_vector",
                         "processed_notes":"note_text_ts_vector"}
 
@@ -79,6 +90,17 @@ def keyword_search(keywords, table, database, ranking_method="ts_rank_cd", norma
 
 
 def semantic_search(embeddings, table, database, similarity_metric="cosine", cutoff=None):
+    """
+    simple semantic search for a given set of embeddings. This will be used for the full text search and outlier detection.
+    There are only 3 tables with embeddings in them, chunked_notes, processed_notes, and visits so if a wrong table is passed
+    will throw a ValueError
+    :param embeddings: an array of embeddings
+    :param table: which table to use
+    :param database: chirpp.database.database.DataBase instance
+    :param similarity_metric: cosine (default), euclidean (a.k.a. L2), dot product
+    :param cutoff: a number between 0 and 1, if provided will only return results with distance less than the cutoff
+    :return: a dataframe with the csn and distance to the embeddings
+    """
     appropriate_tables = {"chunked_notes": "embeddings", "processed_notes": "embeddings", "visits":"phac_embeddings"}
 
     vector_column = appropriate_tables[table]
@@ -103,3 +125,7 @@ def semantic_search(embeddings, table, database, similarity_metric="cosine", cut
 
     results = database.session.execute(text(query)).fetchall()
     return pd.DataFrame(results, columns=["csn", "distance"])
+
+# this is here but not sure how usefult it is going to be with a small model, they can generate positive keywords but
+# not negative keywords
+

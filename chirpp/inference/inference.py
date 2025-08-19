@@ -1,6 +1,7 @@
 import os
 import subprocess
 import time
+import json
 
 from transformers import (pipeline, AutoModelForSequenceClassification,
                           AutoModelForCausalLM, AutoTokenizer)
@@ -21,6 +22,48 @@ from chirpp.inference.utils import *
 
 class NoModelError(Exception):
     pass
+
+# this is here but not sure how useful it's going to qwen3 4b does ok with coming up with positive keywords but not so much
+# with negative ones, there still needs to be some human input here. I have seen a lot of models struggle with the concept.
+class KeywordGenerator:
+    def __init__(self, model_name, prompt, cache_dir=None):
+        self.model_name = model_name
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, cache_dir=cache_dir)
+        self.model = AutoModelForCausalLM.from_pretrained(self.model_name, cache_dir=cache_dir)
+        self.prompt = prompt
+
+    def parse(self, text, weights=True):
+        messages = [
+            {"role": "system", "content": self.prompt},
+            {"role": "user", "content": text}
+        ]
+        text = self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        model_inputs = self.tokenizer([text], return_tensors="pt").to(model.device)
+
+        # conduct text completion
+        generated_ids = self.model.generate(
+            **model_inputs,
+            max_new_tokens=500
+        )
+        output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
+
+        content = self.tokenizer.decode(output_ids, skip_special_tokens=True)
+        content=json.loads(content)
+        if weights:
+            return content
+        else:
+            return list(content.keys())
+
+    def __str__(self):
+        return f"Keyword generator for ts vector search via {self.model_name}"
+
+    def __repr__(self):
+        return f"Keyword generator for ts vector search via {self.model_name}"
+
 
 class LlamaCppServer:
     def __init__(self, config, binary_path):
