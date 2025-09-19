@@ -2,9 +2,45 @@ import torch
 from sentence_transformers import SentenceTransformer, util
 from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer, AutoModelForSeq2SeqLM
 
+from chonkie import SemanticChunker
+from chonkie import Model2VecEmbeddings
+
 
 class NoModelError(Exception):
     pass
+
+from chirpp.inference.config import *
+
+class SemanticChunking:
+    def __init__(self, config):
+        """
+
+        :param chunking_mode:
+        :param embedding_model:
+        """
+        self.chunking_model = Model2VecEmbeddings(chunking_model)
+        self.embedding_model =
+        self.chunk_size=chunk_size
+        self.min_sentence=min_sentences
+        self.threshold=threshold
+
+    def chunk_notes(self, notes):
+        """Chunk notes into semantic segments."""
+        chunker = SemanticChunker(
+            embedding_model=self.chunking_model,
+            threshold=self.threshold,  # Similarity threshold (0-1) or (1-100) or "auto"
+            chunk_size=self.chunk_size,  # Maximum tokens per chunk
+            min_sentences=self.min_sentences,  # Initial sentences per chunk,
+            return_type="texts"  # return a list of strings
+        )
+        chunks = chunker.chunk(notes) #this is a list of list of strings
+        return chunks
+
+    def get_embeddings(self, texts):
+        model = SentenceTransformer(self.config["text_embedding_model"]["name"],
+                                    **text_embedding_kwargs)
+        embeddings = self.embedding_model.encode(texts)
+        return embeddings
 
 
 class Inference:
