@@ -6,7 +6,6 @@ import Levenshtein as ls
 from math import ceil
 import string
 
-
 spacy.prefer_gpu()
 
 class NotEnoughItemsError(Exception):
@@ -69,7 +68,13 @@ def process_epic_dump(note_file, delim="|"):
                        (pd.to_datetime(contents["Departure DateTime"]) - pd.to_datetime(
                            contents["Arrival DateTime"])).to_list()]
     contents["Arrival Time"] = pd.to_datetime(contents["Arrival DateTime"]).dt.time
+    contents["MRN"] = contents["MRN"].astype(int)
+    contents["CSN"] = contents["CSN"].astype(int)
+    contents["CTAS"][contents["CTAS"] == ""] = 0
+    contents["CTAS"] = contents["CTAS"].astype(int)
+
     return contents
+
 
 def split(ls, max_size, combine=True, join_w=" "):
     """
@@ -92,7 +97,7 @@ def split(ls, max_size, combine=True, join_w=" "):
     else:
         return split_list
 
-#TODO add replace str to params
+
 def deidentify(note_text, language_model, name, replace_str="pt"):
     """
     whether to remove patient names from the text
@@ -102,7 +107,7 @@ def deidentify(note_text, language_model, name, replace_str="pt"):
     :param text_col: processed text column, we will lool for names here
     :return: returns the note text with the patient name (if present in the note) replaced with replace string, defaults to pt for patient
     """
-    nlp=spacy.load(language_model)
+    nlp = spacy.load(language_model)
 
     if len(name) > 1:
         raise MultipleNamesError("There are multiple patients by that CSN")
@@ -158,6 +163,7 @@ def remove_extra_spaces(text):
     words = text.split()
     new_text = ' '.join(words)
     return new_text
+
 
 def replace_terms(text, to_fix):
     """
