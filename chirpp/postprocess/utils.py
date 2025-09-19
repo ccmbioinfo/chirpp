@@ -1,30 +1,38 @@
 import os
 import subprocess
 import sys
+from datetime import datetime
 
 import medspacy
 import pandas as pd
-import spacy
 from medspacy.context import ConText
+import spacy
 
 from chirpp.postprocess.extra_contex_rules import context_rules
 from chirpp.postprocess.target_rules import *
 
+from chirpp.preprocess.utils import replace_terms
+
 if not spacy.util.is_package("en_core_web_trf"):
     subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_trf"])
 
-parse_nlp = spacy.load('en_core_web_trf', disable=["ner"])
+med_nlp = spacy.load('en_core_web_trf', disable=["ner"])
 med_nlp = medspacy.load(medspacy_enable=['medspacy_sectionizer'])
 target = med_nlp.add_pipe("medspacy_target_matcher")
 
 context = ConText(med_nlp, rules=os.path.join(os.path.dirname(__file__), 'context_rules.json'))
 context.add(context_rules)
 target.add(substances)
+target.add(safety_devices)
 
 
 class MissingDataError(Exception):
     pass
 
+def get_day(datetime):
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    weekday=days[datetime.weekday()]
+    return weekday
 
 def process_ctas(CTAS):
     """
@@ -296,6 +304,9 @@ def injuries(dx):
             "conjunctival" in dx and ("haemorrhage" in dx or "hemorrhage" in dx)):
         no = 24
         bp = 135
+    elif ("minor" in dx and "head" in dx) or ("head" in dx and "injury" in dx) or ("head" in dx and "trauma" in dx):
+        no = 41
+        bp = 135
     elif (("dental" in dx or "tooth" in dx or "teeth" in dx) and (
             "injury" in dx or "fracture" in dx or "trauma" in dx or "chip" in dx or "pain" in dx or "implant" in dx or "device" in dx or "avulsion" in dx or "impact" in dx)):
         no = 25
@@ -341,15 +352,13 @@ def injuries(dx):
             "soft" in dx or "earlobe" in dx or "skin" in dx or (body_parts(dx) != False)) or ("splinter" in dx):
         no = 37
         bp = body_parts(dx)
-    elif ("minor" in dx and "head" in dx) or ("head" in dx and "injury" in dx) or ("head" in dx and "trauma" in dx):
-        no = 41
-        bp = 135
+
     elif "concussion" in dx:
         no = 42
         bp = 135
     elif ("intracranial" in dx) or (
             "brain" in dx and ("tumor" not in dx and "tumour" not in dx and "cancer" not in dx)) or (
-            "subarachnoid" in dx) or ("subdural" in dx and "hematoma" in dx) or (
+            "subarachnoid" in dx) or ("subdural" in dx and "hematoma" in dx) or ("epidural" in dx) or (
             ("intraventricular" in dx) and ("haemorrhage" in dx or "hemorrhage" in dx)):
         no = 43
         bp = 135
@@ -395,15 +404,14 @@ def injuries(dx):
     elif ("injury" in dx or "trauma" in dx):
         bp = body_parts(dx)
 
-    if ("tibia" in dx and "fibula" in dx):
-        no = natureOfInjury
-        bp = body_parts(dx)
+    # if ("tibia" in dx and "fibula" in dx):
+    #    no = natureOfInjury
+    #    bp = body_parts(dx)
 
     return no, bp
 
 
-# TODO change this into inference
-def get_substances(clean_text, has_substance, nlp=med_nlp):
+def get_substances(clean_text, has_substance, no1, bp1, nlp=med_nlp):
     """
     finds the substances that are mentioned in the text, this may or may not (usually is) the substance that has caused
     the incident, this is done in a context aware manner so if someone says denies alcohol that one is not captured
@@ -413,19 +421,49 @@ def get_substances(clean_text, has_substance, nlp=med_nlp):
     of the incident, still working on that.
     """
 
-    if has_substance == 1:
+    if no1 == 50 and bp1 == 500:
+        has_substance = 1
+
+    if has_substance in [1, "1"]:
         doc = nlp(str(clean_text))
+        # doc=context(doc)
         if len(doc.ents) > 0:
-            substance = ",".join(list(set([str(ent).lower() for ent in doc.ents])))
+            substance = []
+            for ent in doc.ents:
+                if ent.label_ == "SUBSTANCE" and not ent._.context_attributes["is_negated"]:
+                    substance.append(ent.text)
+                else:
+                    continue
         else:
             substance = None
     else:
-        substance = "."
+        substance = None
+
+    if substance is not None and len(substance) > 0:
+        substance = ",".join(list(set(substance)))
 
     return substance
 
 
-def get_disposition(merged_notes, disposition, no1, bp1):
+def get_devices(clean_text, nlp=med_nlp):
+    doc = nlp(str(clean_text))
+    # doc=context(doc)
+
+    if len(doc.ents) > 0:
+        devices = []
+        for ent in doc.ents:
+            if ent.label_ == "safety" and not ent._.context_attributes["is_negated"]:
+                if ent._.target_rule.literal != "ice hockey":
+                    devices.append(int(ent._.target_rule.literal))
+                else:
+                    devices = devices + [2, 3, 4, 5]
+    else:
+        devices = [-1]
+
+    return list(set(devices))
+
+
+def get_disposition(merged_notes, disposition, no1, bp1, complaint):
     """
     return the disposition that is defined in the chirpp requirements, some of these are very hard to figure out
     and those are ignored for the time being
@@ -438,13 +476,46 @@ def get_disposition(merged_notes, disposition, no1, bp1):
     elif disposition in ["Admit", "Transfer to Another Facility", "Send to OR", "Send to Clinic"]:
         if no1 == 71 and bp1 == 900:
             disp_code = 8
+        elif complaint == "Medical Device Problem":
+            disp_code = 8
         else:
             disp_code = 7
+    elif "Consults" in merged_notes or "Consult Follow up" in merged_notes or "Consult" in merged_notes \
+            or (no1 == 71 and bp1 == 900):
+        disp_code = 6
     elif disposition == "Deceased":
         disp_code = 9
-    elif "Consults" in merged_notes or "Consult Follow up" in merged_notes:
-        disp_code = 6
     else:
         disp_code = None
 
     return disp_code
+
+
+def touchups(data, terms):
+    """
+    these are some edge cases that we noticed while processing the notes, hopefully in the future these will be removed
+    :param data: a dataframe namely sheet2
+    :return: the same dataframe where some of the hardcoded values below changed
+    """
+    # bathroom, washroom, laminate floors, laminate indoors
+    data["AREA"][data["PHAC Narrative"].str.contains("monkey bar")] = 59
+    data["I/O"][data["PHAC Narrative"].str.contains("laminate floor")] = "I"
+    data["I/O"][data["PHAC Narrative"].str.contains("snow")] = "O"
+    data["I/O"][data["PHAC Narrative"].str.contains("washroom")] = "I"
+    data["I/O"][data["PHAC Narrative"].str.contains("bathroom")] = "O"
+    data["DISP"][data["Diagnosis"].str.lower() == "pulled elbow"] = 3
+    data["IN"][data["NO1"] == 71] = 16
+
+    # manual touchups of other requests
+    data["SPORTS CODE"] = 4
+    data["NO2"][(data["NO1"] == 12) & (data["BP1"] == 110)] = 41
+    data["BP2"][(data["NO1"] == 12) & (data["BP1"] == 110)] = 135
+    data["BP1"][data["DISP"] == 1] = 999
+    data["NO1"][data["DISP"] == 1] = 99
+    data["IN"][data["NO1"] == 71] = 16
+    data["NO2"][data["Diagnosis"].astype(str).str.lower().str.contains("monteggia")] = 13
+    data["BP2"][data["Diagnosis"].astype(str).str.lower().str.contains("monteggia")] = 430
+    data["PHAC Narrative"]=data["PHAC Narrative"].apply(replace_terms, to_fix=terms)
+    data["sd1"][pd.isna(data["sd1"])] = -1
+
+    return data

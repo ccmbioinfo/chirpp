@@ -1,142 +1,314 @@
-# Sickkids ED CHIRPP processing pipeline
+# CHIRPP Project Documentation
 
-This repos is still work in progress, here are some guidelines as to how to use this repo:
-You can follow along run_example.ipynb to see how to use the pipeline interactively. This is for an older version 
-where we assume that we have an excel file that has been exported from EPIC. Things have changed slightly since then.
-Now we do get some text files daily from the epic servers for cases that happened 3 days ago. These are in the VM 
-(see below)
+## Project Overview
 
-## Important files/folders
+The CHIRPP (Clinical Health Informatics Record Processing Platform) project is designed to process and analyze medical notes. Its primary goals are to perform inference for tasks like classification (e.g., identifying patient conditions) and summarization (e.g., creating concise summaries of lengthy medical records). The platform also aims to generate comprehensive reports based on these analyses.
 
-All the pre-trained models should be in the models folder. I have moved these models to the vm and I will share 
-their location in a separate email. 
+CHIRPP achieves this through a modular architecture involving several key stages:
+*   **Data Preprocessing (`Preprocess`)**: This stage focuses on cleaning and preparing the raw medical notes for analysis. This may include tasks like text normalization, removing irrelevant information, and structuring the data.
+*   **Inference (`Inference`)**: This core component utilizes machine learning models or other analytical techniques to perform classification and summarization on the preprocessed medical notes.
+*   **Data Management (`DataBase`)**: This component likely handles the storage and retrieval of medical notes, processed data, and generated results.
+*   **Postprocessing and Reporting (`PostProcess`)**: After inference, this stage involves formatting the results, potentially combining information from different analyses, and generating user-friendly reports.
 
-## How to set up the enviroment
+This document outlines the project's objectives and key components in more detail.
 
-The current enviroment.yaml is bloated. There is another yaml file called enviroment_cpu.yaml, this will install the 
-dependencies for cpu processing only. Considering there is no cpu access for the vm this should be enough for now. I 
-am adding sqlachemy to the list so we can start building the database as well. 
+## Project Objectives
 
-```python
-conda env create -f enviroment_cpu.yaml
-```
+The main objectives of the CHIRPP project are:
 
-This will create a conda envrionment named `chirpp` and after the initial setup (this may take a while) you can 
-activate the env with `conda activate chirpp`. I am also working on a setuy.py file for dependency installation but 
-that method does not cover non-python dependencies (like cuda libraries for the ai models) so that might never happen.
+* Classify chirpp cases from all the ED presentations
+* Generate reports for human review
+* Create a one-stup shop for full text search
 
-In my mind `setup.py` only exists to make the package pip installable and callable from the command line like any 
-other package to facilitate automation. After the environment creation you can activate it with `conda activate 
-chirpp_cpu` after that if you would like you can install the chirpp_code package using `pip install .`. This will 
-install the chirpp_code package like any other pip package and the generate_report.py script should be available 
-from the command line anywhere. 
+## Key Components
 
-Keep in mind that you will need to activate the conda enviroment first to be able to use the package. 
+The CHIRPP project consists of the following key components:
 
-## Known issues
+* Note reading and pre processing
+* Inference using a selection of custom fine-tuned models to extract information
+* Postprocessing to generate human readable reports
+* Pushing results to a database with LLM embeddings and postgres ts vector indexing
 
-Currently the substance id code does not work. I will push a fix for it in the near future. Any additional and 
-tested autofill functions will be added slowly as well. 
+## Classes
 
-## Where are the epic files?
+This section provides details about the core classes within the CHIRPP project.
 
-They are in the same VM that we have used last summer. I have deleted your user accounts. I will try to create them 
-before I leavebut I will also share the location and the account that these files are uploaded to. I will try to 
-organize this as much as I can. I will also change the file permissions so you can have access, this also means that 
-you can delete/modify things please be careful and do not modify the raw data. Whenever you are working on a file 
-please make a copy and work on the copy, leave the original in the `/home/epic/chirpp` folder.
+### `chirpp.database.database.DataBase`
 
-The IP for the VM is `172.20.4.169`. You can access the vm using a simple ssh tunnel. 
+The `DataBase` class is responsible for managing all interactions with the project's database. Its key roles include:
 
-## Hardware requirements
+*   **Adding and Updating Notes**: Facilitating the storage and modification of medical notes within the database.
+*   **Processing Data Dumps**: Handling the ingestion and processing of bulk data dumps, likely for initial data population or updates.
+*   **Generating Reports**: Extracting and formatting data to create reports based on the information stored in the database.
 
-Whiel these script can potentially run on any cpu a gpu is highly reccomended, The minimum I have tried to run this 
-pipeline was a RTX3080Ti laptop gpu with 16GB or Vram, that said it never came close to filling up the vram so 8GB 
-might be sufficient for inference. Running it without gpu will increase the runtime significantly but I have not tested
-by how much. 
+Key methods of the `DataBase` class include:
 
-## How the pipeline works
+*   `process_dump()`: Processes a data dump to populate or update the database.
+*   `process_report()`: Generates reports from the database.
+*   `import_processed_notes()`: Imports notes that have already undergone some form of processing.
+*   `get_raw()`: Retrieves raw data or notes from the database.
+*   `get_report()`: Retrieves generated reports or data required for report generation.
 
-There are 3 steps to the pipeline 
+### `chirpp.inference.inference.Inference`
 
-### Preprocess
+The `Inference` class is central to the CHIRPP project's analytical capabilities. It is responsible for loading and utilizing machine learning models to perform various inference tasks on medical notes. Its primary functions include:
 
-This portion takes the raw notes and preprocessed the provider notes for 2 things, 1) it removes patient name from 
-anywhere in the text and 2) removes unwanted sections (see `config.yaml`) from the note to reduce its size and only 
-keep relevant sections. The preprocessed notes and some other metadata is then passed to inference
+*   **Classification**: Categorizing notes or extracting specific information (e.g., intent, substance, I/O, AM/PM, location, area).
+*   **Summarization**: Generating concise summaries of longer medical texts.
+*   **Embedding Generation**: Creating numerical representations (embeddings) of text data, which can be used for various downstream tasks like similarity analysis or as input to other models.
 
-### Inference
+Key methods of the `Inference` class include:
 
-This part first classifies each ED presentation using the preprocessed notes above and assigns a probability that 
-it is indeed a chirpp case, we then use pre determined chirpp complaints that are known to be almost always chirpp 
-cases to find a cutoff value for retrival (nothing is 100% so we aim to minimize the human burden while maximizing 
-retrival) rate. The likely positive cases are then used as a proxy to determine the probability cutoff. These 
-consitute the positive cases to be further processed. 
+*   `classify()`: Performs a general classification task.
+*   `summarize()`: Generates a summary of the input text.
+*   `get_intent()`: Specifically classifies the intent of the note.
+*   `get_substance()`: Identifies substances mentioned in the note.
+*   `get_io()`: Determines input/output status.
+*   `get_ampm()`: Identifies AM/PM time references.
+*   `get_location()`: Extracts location information.
+*   `get_area()`: Determines the area associated with the note.
+*   `get_embeddings()`: Generates embeddings for the input text.
 
-After classificaion the positive cases are summarized using the fine tuned `t5-small` model. This generate a maximum 
-128 toke summary of the ED provider notes. In some instances the actual note itself is less than 128 tokens and in 
-those instances there is a message that is displayed. I have not turned that off but I might in the future. 
+The class also defines a custom exception:
 
-Then we calculate the cosine similiarity between the clinical note and the summary as a guide for human review. 
+*   `chirpp.inference.inference.NoModelError`: This exception is raised if a model required for an inference task has not been loaded or provided, preventing the system from proceeding with operations that depend on that model.
 
-To assist with further autofill (though currently not used), using a hand curated list of Diagnoses I determine 
-whether a case involves an injury or not (while it is possible that there is a diagnosis and a differnet more minor 
-injury those cases are quite rare). Additionally a zero shot model (`facebook/bart-large-mnli`) is used to 
-determine whether the incident took place indoors or outdoors and whether the incident involved any kind of sport 
-(very loosely defined). These (and possibly more) will be used in filling in other column in the future. 
+### `chirpp.postprocess.postprocess.PostProcess`
 
-### Postprocess
+The `PostProcess` class handles the transformation of raw and inference-enriched notes into structured formats suitable for reporting and analysis. Its main responsibilities include:
 
-The last step is the post processing. This takes the raw notes and the inference results and merges them into a 
-specific format. The output is an excel file, there the first sheet has the negative cases (and therfore none of the 
-autofill results) and the second sheet has the positive cases. In the second sheet there are some columns that are 
-also filled in a more crude rule based manner. Most substance mentions, indoor/outdoor, disposition and inten 
-columns are auto-populated to a large extend. These are not meant to be 100% accurate but just meant to make the 
-lives of people a little easier. 
+*   **Creating Report Templates**: Generating templates or structures for final reports.
+*   **Autofilling Columns**: Populating predefined fields or columns in reports or processed data structures based on the information extracted from notes and inference results.
 
-## Modifying the pipeline 
+Key methods of the `PostProcess` class include:
 
-Most of the important pipeline paramerters are passed in the `config.yaml` file. There are other parameters like 
-target rules of substance detection or the ED note sectionizer in the preprocess classes, those are in their own 
-respective folders. I do not reccoment changing those parameters without good reason. There was a lot of trial and 
-error to bring the pipeline to this state, this is especially true for the context rules, there are sometimes 
-unintented consequences of changing things like direction or max scope. 
+*   `autofill()`: Automatically fills in data fields based on processed note information.
+*   `create_report()`: Generates a structured report from the processed data.
 
-### Adding new features
+### `chirpp.preprocess.preprocess.SectionRemover`
 
-If you want to add new features to the pipeline do not add them to the pipeline branch. Please create a new branch 
-or overwrite and existing branch and make your changes. When you are done create a pull request and I will review 
-the code. Whenever possible please test your code. Currently we do not have an automated testing method and test 
-cases. We can use one of the daily notes for a simple test case and use something like `pytest`. If you do not have 
-an idea for a feature and would like to contribute please consider adding unit test. 
+The `SectionRemover` class is a utility used during the preprocessing stage. Its specific role is to identify and remove predefined, unnecessary sections from medical notes. This helps in cleaning the input data and focusing subsequent analyses on the most relevant parts of the text.
 
-For other methods please make your additions to the appropriate section of the pipeline (pre/post process or 
-inference). The additions to the main classes should be miminal. You can add functions to `utils.py` in each of the 
-step directories or create additional python modules to be called by the main class. Please the `master` branch for 
-instructions on how to use classes and general guidelines on the code.  
+Key methods of the `SectionRemover` class include:
 
+*   `remove_sections()`: Takes a note as input and returns a version of the note with specified sections removed.
 
-## TODO
+### `chirpp.preprocess.preprocess.Preprocess`
 
-There are several features that are missing form this pipeline below is a short list of what I have in mind feel 
-free to expand the list as appropriate
+The `Preprocess` class orchestrates the initial cleaning and preparation of raw medical notes before they are fed into the inference models or stored in the database. Its main responsibilities are:
 
-+ Autofilling more columns 
-+ Creating a database of all the processed and raw notes
-+ Automating the pipeline runs with a cron job
-+ Moving/deleting old files after they have been imported to database
-+ An S3 or S3 like storage solution to download files after they have been processed
-+ A search functionality to search for specific keywords and terms
-+ A UI for interacting with the database. 
+*   **Filtering Notes**: Selecting notes that meet certain criteria or relevance thresholds.
+*   **Merging Notes**: Combining related notes or note fragments into a cohesive whole.
+*   **Cleaning Notes**: Performing various cleaning operations, potentially including the use of `SectionRemover`, to ensure data quality.
 
-## ROADMAP
+Key methods of the `Preprocess` class include:
 
-The most important goal right now is automating the pipeline and getting the results daily. The next step is 
-importing all the results to a database. For this I have PostgreSQL in mind for several reasons. It is quite feature 
-complete and has extensions that allow for full text search that rivals elasticsearch in speed w/o the memory 
-constraints. Setting up the database and the full text extension is another important one that I can use help with. 
-For more information on that please see [here](https://www.postgresql.org/docs/current/textsearch.html)
+*   `read_raw_notes()`: Reads or loads raw medical notes from a source.
+*   `get_relevant_notes()`: Filters the notes to retrieve only those considered relevant for further processing.
+*   `merge_notes()`: Merges multiple notes into a single, consolidated note.
 
-After the database is setup the next phase will include adding logging to the database so we can keep track of what 
-has been searched and used. This will be essential in the fututre if we want to build a web UI for other to search 
-the database and maybe even do the coding on the database in real time.
+## Database Schema
+
+This section outlines the structure of the database used by the CHIRPP project. The schema is defined using SQLAlchemy and includes tables for storing patient information, visit details, medical notes, processed data, and user management.
+
+### `Patients`
+
+*   **Table Name**: `patients`
+*   **Description**: Stores basic information about patients.
+*   **Key Columns**:
+    *   `mrn`: Medical Record Number (Primary Key).
+    *   `dob`: Date of Birth.
+
+### `Visits`
+
+*   **Table Name**: `visits`
+*   **Description**: Contains detailed information about each patient visit.
+*   **Key Columns**:
+    *   `csn`: Contact Serial Number (Primary Key), uniquely identifies a visit.
+    *   `mrn`: Foreign Key to `patients.mrn`.
+    *   `sex`: Patient's sex.
+    *   `age`: Patient's age at the time of visit.
+    *   `arrival_date`, `arrival_time`: Date and time of arrival.
+    *   `postal_code`: Patient's postal code.
+    *   `chief_complaint`: Main reason for the visit.
+    *   `diagnosis`: Diagnosed condition.
+    *   `disposition`: Outcome of the visit (e.g., admitted, discharged).
+    *   `ctas`: Canadian Triage and Acuity Scale score.
+    *   `los`: Length of Stay.
+    *   `processed`: Boolean indicating if the visit record has undergone human review/processing.
+    *   `address`, `city`, `province`: Patient's address details.
+
+### `Referrals`
+
+*   **Table Name**: `referrals`
+*   **Description**: Stores information about referrals made during a visit.
+*   **Key Columns**:
+    *   `id`: Auto-incrementing primary key.
+    *   `csn`: Foreign Key to `visits.csn`.
+    *   `referrals`: Details of the referral.
+
+### `Problems`
+
+*   **Table Name**: `problems`
+*   **Description**: Lists specific problems or conditions identified during a visit.
+*   **Key Columns**:
+    *   `id`: Auto-incrementing primary key.
+    *   `csn`: Foreign Key to `visits.csn`.
+    *   `problem`: Description of the problem.
+
+### `Notes`
+
+*   **Table Name**: `notes`
+*   **Description**: Stores raw medical notes associated with a visit. This table includes a text search vector for efficient searching.
+*   **Key Columns**:
+    *   `id`: Auto-incrementing primary key.
+    *   `csn`: Foreign Key to `visits.csn`.
+    *   `note_type`: Type of note (e.g., physician note, nursing note).
+    *   `author_type`: Type of author (e.g., MD, RN).
+    *   `author_service`: Service or department of the author.
+    *   `note_text`: The raw text content of the note.
+    *   `notes_ts_vector`: A precomputed tsvector for full-text search on `note_text`.
+
+### `ProcessedNotes`
+
+*   **Table Name**: `processed_notes`
+*   **Description**: Stores notes that have undergone preprocessing and embedding generation. This table is likely used to cache results from computationally intensive operations.
+*   **Key Columns**:
+    *   `id`: Auto-incrementing primary key.
+    *   `csn`: Foreign Key to `visits.csn`.
+    *   `note_text`: The processed text of the note.
+    *   `note_text_ts_vector`: A tsvector for full-text search on the processed note text.
+    *   `jina_query_embed`, `jina_pass_embed`, `jina_sep_embed`, `jina_class_embed`, `jina_match_embed`: Vector embeddings generated by JINA models for different purposes.
+
+### `Cases` (aliased as `chirpp_report`)
+
+*   **Table Name**: `chirpp_report`
+*   **Description**: This table appears to store consolidated information for reporting purposes, likely for specific cases of interest (e.g., injury surveillance). It includes many detailed fields related to injury incidents and patient disposition, as well as text search vectors for narratives.
+*   **Key Columns**:
+    *   `id`: Auto-incrementing primary key.
+    *   `csn`: Foreign Key to `visits.csn`.
+    *   Numerous fields for injury details (date, time, location, type, narratives like `sk_narratvie`, `phac_narrative`), patient information, disposition, and substance involvement.
+    *   Text search vectors (`phac_ts_vector`, `notes_ts_vector`, `sk_ts_vector`) for different narrative fields.
+
+### `CustomLabels`
+
+*   **Table Name**: `custom_labels`
+*   **Description**: Stores definitions for custom labels that can be applied to visits for research or specific tracking purposes. Supports context-aware searching based on JSON rules.
+*   **Key Columns**:
+    *   `id`: Auto-incrementing primary key.
+    *   `label_name`: Name of the custom label.
+    *   `label_description`: Description of the label.
+    *   `key_words`: Keywords associated with the label.
+    *   `context_aware`: Boolean indicating if context-aware rules apply.
+    *   `context_rules`: JSON field for storing context-aware search rules.
+    *   `active`: Boolean indicating if the label is currently active.
+
+### `CustomLabelVisits`
+
+*   **Table Name**: `custom_label_visits`
+*   **Description**: A linking table that associates `CustomLabels` with specific `Visits`.
+*   **Key Columns**:
+    *   `id`: Auto-incrementing primary key.
+    *   `label_id`: Foreign Key to `custom_labels.id`.
+    *   `csn`: Foreign Key to `visits.csn`.
+
+### `Users`
+
+*   **Table Name**: `users`
+*   **Description**: Stores information about users of the CHIRPP system.
+*   **Key Columns**:
+    *   `id`: Auto-incrementing primary key.
+    *   `first_name`, `last_name`: User's name.
+    *   `email`: User's email address.
+    *   `password`: Hashed password for the user.
+    *   `active`: Boolean indicating if the user account is active.
+
+### `Managers`
+
+*   **Table Name**: `managers`
+*   **Description**: Defines a hierarchical relationship between users, indicating who manages whom.
+*   **Key Columns**:
+    *   `id`: Auto-incrementing primary key.
+    *   `user_id`: Foreign Key to `users.id` (the manager).
+    *   `manages`: Foreign Key to `users.id` (the user being managed).
+
+### `Logs`
+
+*   **Table Name**: `logs`
+*   **Description**: Keeps a record of activities performed within the CHIRPP system for auditing and tracking purposes.
+*   **Key Columns**:
+    *   `id`: Auto-incrementing primary key.
+    *   `user`: Foreign Key to `users.id`, indicating who performed the action.
+    *   `timestamp`: Date and time of the logged activity.
+    *   `command`: Description of the command or action performed.
+
+## Preprocessing Steps
+
+The preprocessing of raw medical notes is a critical initial phase in the CHIRPP workflow, ensuring that the data fed into the inference models is clean, relevant, and structured. This process primarily involves the `Preprocess` class, which may utilize the `SectionRemover` class for specific cleaning tasks.
+
+The typical preprocessing pipeline is as follows:
+
+1.  **Reading Raw Notes**: The `Preprocess.read_raw_notes()` method is used to ingest raw medical notes from their source. These notes are often unstructured and may contain a mix of relevant and irrelevant information.
+
+2.  **Filtering Relevant Notes**: Once loaded, the notes undergo a filtering stage using `Preprocess.get_relevant_notes()`. This step aims to sift through the raw data and select only those notes that are pertinent to the project's objectives (e.g., specific types of notes, notes from particular departments, or notes containing certain keywords).
+
+3.  **Removing Unwanted Sections**: A key part of cleaning the notes involves removing sections that are not useful for analysis or may introduce noise. The `SectionRemover.remove_sections()` method is employed for this purpose. It typically operates based on a predefined set of rules or patterns that identify headers or segments of text to be excised (e.g., administrative information, standard disclaimers, or sections deemed irrelevant to clinical analysis). The `Preprocess` class would call upon `SectionRemover` during its cleaning routines.
+
+4.  **Merging Notes**: For a single patient visit, there might be multiple notes created by different healthcare providers or at different times. The `Preprocess.merge_notes()` method is used to consolidate these disparate notes into a single, coherent document for that visit. This ensures that all relevant information for an encounter is available in one place for subsequent processing.
+
+5.  **Further Cleaning (Implied)**: Beyond section removal, the `Preprocess` class may perform other cleaning operations such as correcting common typographical errors, normalizing abbreviations, or standardizing date/time formats, although specific methods for these are not explicitly listed but are common preprocessing tasks.
+
+The output of these preprocessing steps is a set of cleaned and structured notes, ready for the `Inference` stage where machine learning models will extract insights, or for storage in the `ProcessedNotes` table.
+
+## Inference Process
+
+Once medical notes have been preprocessed, the `Inference` class takes center stage. This class is the hub for all machine learning model-based predictions within the CHIRPP project. It loads and utilizes various models to extract meaningful information and insights from the cleaned note data.
+
+Key functionalities of the `Inference` class include:
+
+1.  **Note Classification**:
+    *   Models are used to classify notes based on predefined categories. For example, a primary use case is determining if a note or a collection of notes for a visit constitutes a "CHIRPP case" (e.g., an injury case relevant to the Canadian Hospitals Injury Reporting and Prevention Program). This often involves binary or multi-class classification models invoked via the generic `classify()` method or more specialized internal methods.
+
+2.  **Content Summarization**:
+    *   For lengthy medical notes, the `summarize()` method employs summarization models to generate concise versions, capturing the most critical information. This is particularly useful for quick reviews and report generation.
+
+3.  **Specific Information Extraction**:
+    *   The `Inference` class uses targeted models to extract various discrete pieces of information from the notes. This can include:
+        *   `get_intent()`: Determining the likely intent behind an injury or event (e.g., accidental, intentional).
+        *   `get_substance()`: Identifying mentions of substance use (e.g., alcohol, drugs).
+        *   `get_location()`: Extracting the location where an incident or injury occurred.
+        *   `get_area()`: Pinpointing the specific area of the body affected.
+        *   Other methods like `get_io()` (input/output) and `get_ampm()` (time of day) also fall under this category of specific data point extraction.
+
+4.  **Text Embedding Generation**:
+    *   Using the `get_embeddings()` method, the `Inference` class can convert text from notes into dense vector representations (embeddings). These embeddings are highly valuable for:
+        *   Similarity searches (e.g., finding similar notes or cases).
+        *   Input features for other machine learning models.
+        *   Clustering and data visualization.
+    The `ProcessedNotes` table stores some of these generated embeddings (e.g., `jina_query_embed`, `jina_pass_embed`).
+
+It's important to note that the `Inference` class relies on having the appropriate models loaded. If a required model is missing, it raises a `NoModelError` to prevent errors in downstream processing. The results from these inference tasks are then typically passed to the `PostProcess` stage for report generation and data structuring.
+
+## Postprocessing Steps
+
+After the raw notes have been enriched with insights by the `Inference` class, the `PostProcess` class takes over to structure this information into a final, usable format. This stage is crucial for transforming processed data and model predictions into actionable reports.
+
+The main steps in the postprocessing workflow, primarily handled by the `PostProcess` class, are:
+
+1.  **Report Template Creation**:
+    *   The process often begins by defining or loading a structured report template. This template dictates the layout and fields of the final output. While not explicitly a method, `PostProcess` is designed to work with such templates to ensure consistency in reporting.
+
+2.  **Autofilling Report Fields**:
+    *   The `PostProcess.autofill()` method is a key component here. It systematically populates the fields within the report template.
+    *   This method draws data from multiple sources:
+        *   **Raw Notes**: Basic information like patient identifiers, demographics, and direct quotes or sections from the original notes might be pulled in.
+        *   **Inference Results**: The bulk of the structured data comes from the outputs of the `Inference` class. This includes classifications (e.g., CHIRPP case status), summaries, and extracted entities (like intent, substance use, location, etc.).
+    *   The `autofill` logic intelligently maps these varied pieces of information to their respective fields in the report.
+
+3.  **Final Report Generation**:
+    *   Once all relevant fields are populated, the `PostProcess.create_report()` method is called.
+    *   This method compiles all the autofilled data and generates the final report in a user-friendly format. While the exact output format can vary, a common example would be an Excel spreadsheet, which is suitable for review, analysis, and distribution. Other formats like structured text files or database entries are also possible.
+
+The `Cases` table (aliased as `chirpp_report` in the database schema) is a likely representation of the structured data that results from this postprocessing, containing many of the fields that would be autofilled and then presented in a report.
+
+Regarding the `chirpp.postprocess.events.Event` class: While its primary role is to represent and search for specific occurrences within notes (which can be a specialized form of postprocessing), its direct involvement in the main report generation pipeline handled by `PostProcess` might be more for specialized queries or custom report sections that focus on event-based data rather than the overarching case summary. For standard reporting, the `PostProcess` class is the main actor. The `SchemaError` exception, associated with the `Event` class, ensures data integrity if event data is being incorporated.

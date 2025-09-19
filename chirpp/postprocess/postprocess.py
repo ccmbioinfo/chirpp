@@ -1,6 +1,11 @@
-from .utils import *
+
+import spacy_transformers
+import pandas as pd
+from chirpp.postprocess.utils import *
+from chirpp.database.utils import calculate_age
 
 
+#TODO this needs to be refactored to utils so I can use it on database prepare report
 class PostProcess:
     def __init__(self, raw_notes, inference_notes, params):
         """
@@ -14,13 +19,15 @@ class PostProcess:
         self.params = params
 
         raw_notes["Arrival Date"] = pd.to_datetime(raw_notes["Arrival Date"])
+        raw_notes["Date of Birth"] = pd.to_datetime(raw_notes["Date of Birth"])
         inference_notes["Arrival Date"] = pd.to_datetime(inference_notes["Arrival Date"])
         inference_notes = inference_notes.rename(columns={"Note Text": "pre_processed"})
-        inference_notes = inference_notes[['MRN', 'Arrival Date', 'probs', 'to_summarize', 'PHAC Narrative',
-                                           'cosine_similarity', 'pre_processed', 'io', 'intent', 'sub']]
-        merged = raw_notes.merge(inference_notes, how="inner", on=["MRN", "Arrival Date"])
+        inference_notes = inference_notes[['CSN',  'probs', 'is_chirpp', 'PHAC Narrative',
+                                           'pre_processed', 'io', 'intent', 'sub',
+                                           'location', 'area', 'ampm']]
+        merged = raw_notes.merge(inference_notes, how="inner", on=["CSN"])
         merged["Arrival Time"] = pd.to_datetime(merged["Arrival Time"].astype(str))
-        merged = merged.groupby(["CSN", "MRN", "Arrival Date", "Arrival Time"])
+        merged = merged.groupby(["MRN", "Arrival Date", "Arrival Time"])
 
         report_df = pd.DataFrame(columns=self.params["report_header"])
 
@@ -30,10 +37,14 @@ class PostProcess:
             group_df["POSTAL"] = data["Postal Code"].apply(process_postal).drop_duplicates()
             group_df["SEX"] = data["Sex"].apply(process_sex).drop_duplicates()
             group_df["MRN"] = data["MRN"].drop_duplicates()
+            group_df["CSN"] = data["CSN"].drop_duplicates()
             group_df["ScrMRN"] = data["MRN"].apply(scramble_mrn).drop_duplicates()
             group_df["DOB"] = pd.to_datetime(data["Date of Birth"]).apply(
                 lambda x: x.strftime('%Y-%m-%d')).drop_duplicates()
+            group_df["AGE"] = calculate_age(data["Arrival Date"].drop_duplicates().tolist()[0],
+                                            data["Date of Birth"].drop_duplicates().tolist()[0])
             group_df["ER Date"] = pd.to_datetime(data["Arrival Date"]).dt.strftime('%Y-%m-%d').drop_duplicates()
+            group_df["ER Day"] = pd.to_datetime(data["Arrival Date"]).apply(get_day).drop_duplicates()
             group_df["ER Time"] = data["Arrival Time"].apply(lambda x: x.strftime('%H:%M')).drop_duplicates()
             group_df["CTAS"] = data["CTAS"].apply(process_ctas).drop_duplicates()
             group_df["Chief Complaint"] = data["Chief Complaint"].drop_duplicates()
@@ -43,11 +54,15 @@ class PostProcess:
             group_df["Diagnosis"] = data["Diagnosis"].drop_duplicates()
             group_df["probs"] = data["probs"].drop_duplicates()
             group_df["Problem List"] = data["Problem List"].drop_duplicates()
-            group_df["to_summarize"] = data["to_summarize"].drop_duplicates()
+            group_df["is_chirpp"] = data["is_chirpp"].drop_duplicates()
             group_df["PHAC Narrative"] = data["PHAC Narrative"].drop_duplicates()
             group_df["I/O"] = data["io"].drop_duplicates()
             group_df["IN"] = data["intent"]
             group_df["sub"] = data["sub"]
+            group_df["AREA"]=data["area"]
+            group_df["LOCATION"]=data["location"]
+            group_df["AM/PM"]=data["ampm"]
+
 
             for_narrative = data[data["Note Type"].isin(self.params["note_types"])]
             for_narrative["Note Type"] = pd.Categorical(for_narrative["Note Type"],
@@ -67,10 +82,10 @@ class PostProcess:
 
         self.template = template
 
-        self.sheet1 = self.template[~self.template["to_summarize"]]
-        self.sheet2 = self.template[self.template["to_summarize"]]
+        self.sheet1 = self.template[~self.template["is_chirpp"]]
+        self.sheet2 = self.template[self.template["is_chirpp"]]
 
-    # TODO sd1-5, area, location, place, Inj date, Inj time, sports code
+    # TODO sd1-5, place, Inj date, Inj time, sports code
     def autofill(self):
         """
         autofills couple of columns using the functions from utils,
@@ -79,18 +94,26 @@ class PostProcess:
         """
         complaints = self.sheet2["Chief Complaint"].to_list()
         notes = self.sheet2["pre_processed"].to_list()
-        diags = self.sheet2["Diagnosis"]
+        diags = self.sheet2["Diagnosis"].to_list()
         merged_notes = self.sheet2["Notes"].to_list()
         dispositions = self.sheet2["Disposition"].to_list()
         has_substance = self.sheet2["sub"].to_list()
+
 
         autofill_cols = {
             "subID": [],
             "NO1": [],
             "BP1": [],
             "DISP": [],
+            "sd1": [],
+            "sd2": [],
+            "sd3": [],
+            "sd4": [],
+            "sd5": [],
         }
-        for complaint, note, merged, diag, disp, has_sub in zip(complaints, notes, merged_notes, diags,
+        safety_cols = ["sd1", "sd2", "sd3", "sd4", "sd5"]
+
+        for complaint, note, merged, diag, disp, has_sub, in zip(complaints, notes, merged_notes, diags,
                                                                 dispositions, has_substance):
             diag = str(diag).lower()
             if complaint == "Medical Device Problem":
@@ -98,8 +121,16 @@ class PostProcess:
                 bp1 = 999
             else:
                 no1, bp1 = injuries(diag)
-            report_disposition = get_disposition(merged, disp, no1, bp1)
-            subid = get_substances(note, has_substance)
+            report_disposition = get_disposition(merged, disp, no1, bp1, complaint)
+            subid = get_substances(note, has_sub, no1, bp1)
+            devices=get_devices(note)
+            i=0
+            while i <= 4:
+                if i <= len(devices)-1:
+                    autofill_cols[safety_cols[i]].append(devices[i])
+                else:
+                    autofill_cols[safety_cols[i]].append(None)
+                i+=1
 
             autofill_cols["NO1"].append(no1)
             autofill_cols["BP1"].append(bp1)
@@ -113,19 +144,18 @@ class PostProcess:
 
     def create_report(self, path, overwrite=False):
         """
-        write the report to file
-        :param path: path for the file
-        :param overwrite: whether to write the file if it exisist
-        :return: nothing, saves an excel file with 2 sheets
+        write report to excel
+        :param path: path of the file
+        :param overwrite: whether to replace the file or noe
+        :return: None, unless there is an error raised by pandas
         """
         if os.path.exists(path) and not overwrite:
             raise FileExistsError("{} already exisits".format(path))
 
-        self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "to_summarize"])
-        self.sheet2["sd1"] = -1
-        self.sheet2["SPORTS CODE"] = 4
-        self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["NO2"] = 42
-        self.sheet2[(self.sheet2["NO1"] == 12) & (self.sheet2["BP1"] == 110)]["BP2"] = 135
+        self.sheet1 = self.sheet1.drop(columns=["pre_processed", "Disposition", "is_chirpp", "probs"])
+        self.sheet2 = self.sheet2.drop(columns=["pre_processed", "Disposition", "is_chirpp", "probs"])
+
+        self.sheet2=touchups(self.sheet2, self.params["terms_to_fix"])
 
         with pd.ExcelWriter(path) as out:
             self.sheet1.to_excel(out, sheet_name="Sheet 1", index=False)

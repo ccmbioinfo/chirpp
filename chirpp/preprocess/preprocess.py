@@ -3,6 +3,7 @@ import os
 from medspacy.section_detection import SectionRule
 from chirpp.preprocess.utils import *
 
+
 class SectionRemover:
     """
     SectionRemover class for removing unnecessary sections for data pre-processing, these sections will then be used in
@@ -105,6 +106,7 @@ class Preprocess:
         elif self.note_file.endswith("txt"):
             notes = process_epic_dump(self.note_file)
         return notes
+
 
     def _merge_notes(self, notes, group_cols=["CSN"], line_col="Note Line"):
         """

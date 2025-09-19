@@ -73,6 +73,7 @@ def process_epic_dump(note_file, delim="|"):
     contents["CTAS"][contents["CTAS"] == ""] = 0
     contents["CTAS"] = contents["CTAS"].astype(int)
 
+
     return contents
 
 

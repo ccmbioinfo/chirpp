@@ -1,0 +1,149 @@
+##### PRE PROCESS
+pre_process:
+  #TODO this needs to be implemented as a param
+  epic_dump_delim: "|"
+  inference_sections: [ "history_of_present_illness", "observation_and_plan", "chief_complaint", "problem_list", "diagnosis" ]
+  autofill_sections: [ "history_of_present_illness", "chief_complaint", "problem_list", "diagnosis" ]
+
+  remove_sections: [ "past_medical_history", "family_history", "patient_instructions", "education",
+                     "patient_education", "medications", "allergies", "allergy", "imaging", "hospital_course",
+                     "labs_and_studies", "comments", "social_history",
+                     "physical_exam", "other", "user_index" ]
+
+  line_col: "LINE"
+  section_rules: "./preprocess/preprocess_patterns.json"
+  note_types:
+    Note Type: [ "ED Provider Notes", "ED Triage Notes" ]
+  include_cols: [ "MRN", "Arrival Date", "Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "LOS" ]
+  group_cols: [ "CSN" ]
+  orientation: "front"
+  keep_unlabelled: true
+  anonymize: false
+
+  terms_to_fix: { 'hx': 'history of', '#': 'fracture', 'c/o': 'complaining of', 'f/u': 'follow up',
+                  'fu': 'follow up', 'w': 'with', 'ortho': 'orthopaedics', 'psych': 'psychiatry', 'cardio': 'cardiology',
+                  'ophtho': 'ophthalmology', 'ENT': 'otolaryngology', 'plastics': 'plastic surgery', 'physio': 'physiotherapy',
+                  'heme': 'hematology', 'rx': 'prescription', 'tx': 'treatment', 'd': 'days ago', 'mo': 'months', 'lac': 'laceration',
+                  '@': 'at', 'hpi': 'history of', 'abx': 'antibiotics', 'rom': 'range of motion', 'fx': 'fracture', 'prox': 'proximal',
+                  'wb': 'weight bear', 'dist': 'distal', 'min': 'miniutes', 'mins': 'minutes', 'sec': 'seconds', 'secs': 'seconds',
+                  'hr': 'hours', 'hrs': 'hours', 'fb': 'foreign body', 'hi': 'head injury', 'approx': 'approximately', 'sw': 'social worker',
+                  'sx': 'symptoms', 'sh': 'self-harm', 'pt': 'patient', "pt's": "patient's", 'r': 'right', 'rt': 'right', 'l': 'left',
+                  'lt': 'left', 'ft': 'feet', 'm': 'meters', 'mm': 'millimeters', 'cm': 'centimeters', 'km/h': 'kilometers per hour',
+                  'kmph': 'kilometers per hour', 'kph': 'kilometers per hour', 'km': 'kilometers', 'bsa': 'Body Surface Area',
+                  'tbsa': 'Total Body Surface Area', 'ed': 'emergency department', 'pip': 'proximal interphalangeal joint',
+                  'mt': 'metatarsal', 'hep b': 'Hepatitis B', 'loonie': '$1 coin', 'toonie': '$2 coin', 'OCD': 'Obsessive-Compulsive Disorder',
+                  'ADHD': 'Attention Deficit Hyperactivity Disorder', 'BPD': 'Borderline Personality Disorder', 'PTSD': 'Post-Traumatic Stress Disorder',
+                  'MDD': 'Major Depressive Disorder', 'GDD': 'Global Developmental Delay', 'ASD': 'Autism Spectrum Disorder', 'GAD': 'Generalized Anxiety Disorder',
+                  'ODD': 'Oppositional Defiant Disorder', 'LD': 'learning disability', 'DMDD': 'Disruptive Mood Dysregulation Disorder',
+                  'NAFLD': 'Non-alcoholic Fatty Liver Disease', 'foosh': 'fall on an outstretched hand', 'TMJ': 'Temporomandibular Joint',
+                  'MCP': 'metacarpophalangeal', 'OD': 'overdose', 'GnRH': 'Gonadotropin-Releasing Hormone', 'trans': 'transgender',
+                  'WIC': 'walk-in clinic', 'si': 'suicidal ideations', 'LOC': 'altered level of consciousness', 'CT': 'Computed Tomography',
+                  'TTC': 'Toronto Transit Commission', 'FMD': 'family medical doctor', 'PCP': 'primary care provider',
+                  'PMD': 'doctor of primary medicine', 'MVC': 'motor vehicle collision', 'EMS': 'Emergency Medical Services',
+                  'EKG': 'electrocardiogram', 'ECG': 'electrocardiogram', 'NBNB': 'non-bloody, non-bilious',
+                  'dw': 'discussed with', 'RUQ': 'right upper quadrant', 'yo': 'year old', 'co': 'complaining of', 'bl': 'bilateral' }
+
+
+
+###### INFERENCE ########
+inference:
+  num_labels: 2
+  include_labels: false
+  max_length: 128
+  truncation: true
+  cutoff: 0.95
+
+  ## normally there are 8 claasses but partner abuse is non-existent
+  #TODO need to add spacy model here and refactor to make it a param
+  classification_model: "./models/distilbert"
+  summarization_model: "./models/t5-small"
+  distance_model: "./models/all-mpnet-base-v2"
+  io_model: "./models/distilbert_io"
+  intent_model: "./models/albert_xxl_intent"
+  substance_model: "./models/albert_xxl_sub"
+  am_pm_model: "./models/distilbert_ampm"
+  location_model: "./models/distilbert_location"
+  area_model: "./models/distilbert_area"
+  # for some reason the huggingface thing needs to point to the model cannot save it to a folder
+  # we are doing the same thing for the spacy model and huggingface will download it and keep in cache in the
+  #vm I don't think this is a big deal since we are using the model as is and once downloaded will stay in the vm
+  embedding_model: "models/snowflake_arctic_embed_l_2"
+
+  intent_labels: 7
+  io_labels: 2
+  classification_labels: 2
+  substance_labels: 2
+  am_pm_labels: 2
+  location_labels: 11
+  area_labels: 16
+
+  io_cutoff: 0.85
+  am_pm_cutoff: 0.9
+  location_cutoff: 0.85
+  area_cutoff: 0.85
+  intent_cutoff: 0.8
+  subs_cutoff: 0.8
+  sd_cutoff: 0.75
+
+  intent_label_dict: { '0': '10', '1': '11', '2': '12', '3': '13', '4': '15', '5': '16', '6': '19' }
+
+  location_label_dict: { '0': '0', '1': '12', '2': '22', '3': '41', '4': '42', '5': '62', '6': '64',
+                         '7': '68', '8': '70', '9': '82', '10': '150' }
+
+  area_label_dict: { '0': '0', '1': '11', '2': '12', '3': '13', '4': '16', '5': '19', '6': '42',
+                     '7': '51', '8': '55', '9': '59', '10': '60', '11': '71', '12': '72', '13': '73', '14': '74', '15': '75' }
+
+  note_col: "Note Text"
+  use_chirpp: true
+  chirpp_col: "CHIRPP Icon"
+  anonymize_summaries: false
+
+
+  pos_complaints: [ "Oral / Esophageal Foreign Body", "Upper Extremity Injury", "Lower Extremity Injury",
+                    "Burn", "Anxiety / Situational Crisis", "Head Injury", "Medical Device Problem",
+                    "Depression / Suicidal / Deliberate Self Harm", "Paediatric Disruptive Behaviour",
+                    "Laceration/Puncture", "Abrasion", "Neck Trauma", "Noxious Inhalation", "Foreign Body, Nose",
+                    "Post-operative Complications", "Overdose Ingestion", "Bizarre Behaviour", "Cast Check",
+                    "Foreign Body Ear", "Major Trauma - Penetrating", "Eye Trauma", "Concern For Patient Welfare",
+                    "Suture / Staple Removal", "Major Trauma - Blunt", "Foreign Body, Skin", "Violent / Homicidal Behaviour",
+                    "Sexual Assault", "Substance Misuse / Intoxication", "Hypothermia", "Traumatic Back / Spine Injury",
+                    "Nasal Trauma", "Foreign Body, Eye", "Respiratory Foreign Body", "Bite", "Facial Trauma",
+                    "Chemical Exposure, Eye", "Genital Trauma", "Amputation", "Social Problem", "Hallucinations / Delusions",
+                    "Insomnia", "Ear Injury", "Chemical Exposure", "Foreign Body in Rectum", "Isolated Chest Trauma - Blunt",
+                    "Isolated Abdominal Trauma - Blunt", "Anal / Rectal Trauma", "Multisystem Trauma - Blunt", "Foreign Body, Vagina",
+                    "Body Fluid Exposure", "Ring Removal", "Multisystem Trauma - Penetrating", "Near Drowning", "Isolated Abdominal Trauma - Penetrating",
+                    "Isolated Chest Trauma - Penetrating", "Substance Withdrawal", "Electrical Injury", "Frostbite / Cold Injury",
+                    "Cardiac Arrest (Traumatic)", "Foreign Body in Eye" ]
+
+  #TODO need to add pos_based on diagnosis
+
+
+  final_columns: [ "MRN", "Arrival Date", "Note Text", "probs", "summary", "cosine_similarity", "Diagnosis",
+                   "Problem List", "Chief Complaint" ]
+
+
+
+###### POST PROCESS ######
+post_process:
+  cc_filter: [ 'depression / suicidal / deliberate self harm', 'ingestion', 'chemical', 'burn',
+               'concern for patient wellfare', 'overdose ingestion', 'substance misuse / intoxication',
+               'vomiting and/or nausea', 'behaviour', 'altered level Of consciousness' ]
+
+  diag_pl_filter: [ 'ingestion', 'poisoning', 'overdose', 'exposure', 'anxiety', 'substance',
+                    'intoxication', 'chemical', 'depression', 'suicidal','depressive', 'crisis',
+                    'instability', 'burn', 'self-harm', 'vomitting', 'irritation', 'suicide',
+                    'depressed', 'anorexia nervosa', 'caustic', 'corrosive' ]
+
+
+  report_header: [ "CSN", "MRN", "ScrMRN", "DOB", "AGE", "SEX", "POSTAL", "ER Time", "ER Date", "ED Day", "INJ DATE", "Hr", "Min", "AM/PM",
+                   "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "W4P", "NO1", "BP1", "NO2",
+                   "BP2", "NO3", "BP3", 'veh', 'veh p',"Notes", 'LOS', "DISP", "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
+                   "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition"]
+
+  note_types: [ 'ED Triage Notes', 'ED Provider Notes', 'PS Initial Consult', 'Consults',
+                'Consult Follow Up', 'Admission', 'Discharge Summary', 'Progress Notes',
+                'Assessment & Plan Note',  'ED Trauma Note', 'ED Trauma Notes',
+                'ED Procedure Note', 'Procedures','Op Note', 'Transfer In / Advice Note' ]
+
+  task_to_colum: { "classification": "jina_class_embed", "separation": "jina_sep_embed", "text-matching": "jina_match_embed",
+                   "retrieval.query": "jina_query_embed", "retrieval.passage": "jina_pass_embed" }

@@ -3,6 +3,7 @@ from math import floor
 
 from chirpp.postprocess.utils import process_postal, scramble_mrn, process_ctas, process_sex
 
+
 col_dict = {
     "CSN": "csn", "INJ DATE": "injury_date", "Hr": "injury_hour", "Min": "injury_min", "AM/PM": "am_pm",
     "I/O": "i_o", "LOCATION": "location", "AREA": "area", "PLACE": "place", "SK Narrative": "sk_narrative",
@@ -19,6 +20,7 @@ def invert_dict(dict):
     return new_dict
 
 # because epic gives you the current age not what the age was when the patient presented
+
 def calculate_age(arrival, dob):
     td = arrival - dob
     td = td.days
@@ -26,14 +28,12 @@ def calculate_age(arrival, dob):
     age = floor(td / 365)
     return age
 
-
 # right now I'm not changing the column names, I'm relying on the existing reports and they will remain constant and
 # the column names will not be changed for no good reason
 def get_sections(notes):
     notes = notes[~pd.isna(notes["Note Text"])]
     patients = notes[["MRN", "Date of Birth"]].drop_duplicates()
     patients["Date of Birth"] = pd.to_datetime(patients["Date of Birth"])
-
     patients = patients[["MRN", "Date of Birth"]]
     patients = patients.rename(columns={"MRN": "mrn", "Date of Birth": "dob"})
 
@@ -59,7 +59,6 @@ def get_sections(notes):
                                     "CTAS": "ctas", "Address": "address", "City": "city", "Province": "province"})
     # this is arrived in error
     visits = visits.drop(columns="Date of Birth")
-
     referrals = notes[["CSN", "Referral Order"]].dropna().drop_duplicates()
     referrals = referrals.rename(columns={"CSN": "csn", "Referral Order": "referrals"})
 
@@ -72,6 +71,7 @@ def get_sections(notes):
     if "Note ID" in notes.columns:
         notes_df = notes[
             ["CSN", "Note Type", "Author Type", "Author Service", "Note Text", "LINE", "Note ID"]].drop_duplicates()
+
         notes_grouped = notes_df.groupby(["Note ID"])
 
         notes_merged = []
@@ -92,7 +92,6 @@ def get_sections(notes):
             ["CSN", "Note Type", "Author Type", "Author Service", "Note Text"]].drop_duplicates()
 
     return patients, visits, referrals, problems, notes_df
-
 
 
 def prepare_report(visits, cases, patients, problems):

@@ -1,6 +1,6 @@
 import torch
 from sentence_transformers import SentenceTransformer, util
-from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer, AutoModelForSeq2SeqLM, AutoModel
 
 from chonkie import SemanticChunker
 from chonkie import Model2VecEmbeddings
@@ -50,55 +50,72 @@ class Inference:
 
     def __init__(self, classification_model, summarization_model, classification_labels,
                  intent_model, intent_labels, substance_model, substance_labels, io_model, io_labels,
-                 device=None):
+                 location_model, location_labels, area_model, area_labels, ampm_model, ampm_labels,
+                 embedding_model, device=None):
         """
-        init method, specify pipeline parameters for classification and summarization
-        :param classification_model: model directory for the trained classification model
-        :param summarization_model: model directory for summarization model
-        :param num_labels: number of labels to infer this has to match the training data
-        :param device: whether to use gpu or cpu, if None will default to whatever gpu torch finds or cpu
+
+        :param classification_model:
+        :param summarization_model:
+        :param classification_labels:
+        :param intent_model:
+        :param intent_labels:
+        :param substance_model:
+        :param substance_labels:
+        :param io_model:
+        :param io_labels:
+        :param location_model:
+        :param location_labels:
+        :param area_model:
+        :param area_labels:
+        :param ampm_model:
+        :param ampm_labels:
+        :param embedding_model:
+        :param sd_model:
+        :param sd_labels:
+        :param tasks:
+        :param device:
         """
         if device is None:
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        if classification_model is not None:
-            model = AutoModelForSequenceClassification.from_pretrained(classification_model, num_labels=classification_labels)
-            tokenizer = AutoTokenizer.from_pretrained(classification_model, padding="max_length")
-            self.clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
-            raise NoModelError("no classification model provided")
+            self.device = device
+        self.classification_model = classification_model
+        self.summarization_model = summarization_model
+        self.classification_labels = classification_labels
+        self.intent_model = intent_model
+        self.intent_labels = intent_labels
+        self.substance_model = substance_model
+        self.substance_labels = substance_labels
+        self.io_model = io_model
+        self.location_model = location_model
+        self.location_labels = location_labels
+        self.area_model = area_model
+        self.area_labels = area_labels
+        self.ampm_model = ampm_model
+        self.ampm_labels = ampm_labels
+        self.embedding_model = embedding_model
 
-        if summarization_model is not None:
-            model = AutoModelForSeq2SeqLM.from_pretrained(summarization_model)
-            tokenizer = AutoTokenizer.from_pretrained(summarization_model, padding="max_length", truncation=True)
-            self.summarizer = pipeline("summarization", model=model, tokenizer=tokenizer, device=device)
-        else:
-            raise NoModelError("no summarization model provided")
+    def generate_pipeline(self, model_dir, labels, taks_name, task_type="classification"):
+        if model_dir is None:
+            raise NoModelError("There is no model for {}".format(taks_name))
 
-        if intent_model is not None:
-            model = AutoModelForSequenceClassification.from_pretrained(intent_model,
-                                                                       num_labels=intent_labels)
-            tokenizer = AutoTokenizer.from_pretrained(intent_model, padding="max_length")
-            self.intent_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
+        if task_type == "classification":
+            model = AutoModelForSequenceClassification.from_pretrained(model_dir)
+            tokenizer = AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True)
+            pipe = pipeline("text-classification", model=model_dir, tokenizer=tokenizer, device=self.device)
+        elif task_type == "summarization":
+            model = AutoModelForSeq2SeqLM.from_pretrained(model_dir, num_labels=labels)
+            tokenizer = AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True)
+            pipe = pipeline("summarization", model=model_dir, tokenizer=tokenizer,
+                            device=self.device)
+        elif task_type == "embeddings":
+            model = AutoModel.from_pretrained(model_dir, add_pooling_layer=False)
+            tokenizer=AutoTokenizer.from_pretrained(model_dir, padding="max_length", truncation=True,
+                                                    return_tensors='pt', max_length=1024)
+            pipe=(model, tokenizer)
         else:
-            raise NoModelError("There is no intent model")
-
-        if substance_model is not None:
-            model = AutoModelForSequenceClassification.from_pretrained(substance_model,
-                                                                       num_labels=substance_labels,
-                                                                       ignore_mismatched_sizes=True)
-            tokenizer = AutoTokenizer.from_pretrained(substance_model, padding="max_length")
-            self.substance_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
-        else:
-            raise NoModelError("There is no substance model")
-
-        if io_model is not None:
-            model = AutoModelForSequenceClassification.from_pretrained(io_model,
-                                                                       num_labels=io_labels)
-            tokenizer = AutoTokenizer.from_pretrained(io_model, padding="max_length")
-            self.io_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
-        else:
-            raise NoModelError("There is no inside outside model")
+            raise ValueError("invalid task type, it can only be 'classification', 'summarization', or 'embeddings'")
+        return pipe
 
     def classify(self, notes, note_col="Note Text", include_labels=False):
         """
@@ -109,11 +126,15 @@ class Inference:
         :return: model probabilities of being a chirpp case
         """
 
-        if self.clf is None:
-            raise NoModelError("No model has been specified for classification")
+        if self.classification_model is not None:
+            pipe = self.generate_pipeline(model_dir=self.classification_model,
+                                          labels=self.classification_labels,
+                                          taks_name="classification", task_type="classification")
+        else:
+            raise NoModelError("no classification model provided")
 
         to_infer = notes[~notes[note_col].isnull()][note_col].copy().to_list()
-        labels = self.clf(to_infer, padding=True, truncation=True)
+        labels = pipe(to_infer, padding=True, truncation=True)
 
         edited_labels = []
         for lab in labels:
@@ -147,35 +168,21 @@ class Inference:
         :param max_length: model max length
         :return: summaries in a list
         """
-        if self.summarizer is None:
-            raise NoModelError("No model has been specified for summarization")
+
+        if self.summarization_model is not None:
+            pipe = self.generate_pipeline(model_dir=self.substance_model,
+                                          labels=0,
+                                          taks_name="summarization", task_type="summarization")
+        else:
+            raise NoModelError("There is no substance model")
 
         to_infer = [str(note) for note in notes[note_col].to_list()]
-        summaries = self.summarizer(to_infer, truncation=truncation, max_length=max_length)
+        summaries = pipe(to_infer, truncation=truncation, max_length=max_length)
         summary_texts = []
         for summary in summaries:
             summary_texts.append(summary["summary_text"])
 
         return summary_texts
-
-    def calculate_cosine_distances(self, model, notes, summaries):
-        """
-        calculate the cosine distance between the generated summary and the cleaned note text, this uses the cleaned text not just the hpi section
-        :param model: name of the model
-        :param notes: list of "sections_removed" notes
-        :param summaries: list of summaries
-        :return: list of cosine distances in the same order as the notes and the summaries
-        """
-        model = SentenceTransformer(model)
-
-        distances = []
-        for summary, note in zip(notes, summaries):
-            em1 = model.encode(summary)
-            em2 = model.encode(note)
-            dist = util.cos_sim(em1, em2)
-            distances.append(float(dist[0]))
-
-        return distances
 
     def get_intent(self, notes, notes_col, label_dict, cutoff=0.8):
         """
@@ -186,21 +193,29 @@ class Inference:
         :param cutoff: the model confidence cutoff, anything below that will be left blank
         :return: labels for intent in a list
         """
-        to_infer=notes[notes_col].to_list()
-        labels = self.intent_clf(to_infer, padding=True, truncation=True)
+
+        if self.intent_model is not None:
+            pipe = self.generate_pipeline(model_dir=self.intent_model,
+                                          labels=self.intent_labels,
+                                          taks_name="intent", task_type="classification")
+        else:
+            raise NoModelError("There is no intent model")
+
+        to_infer = notes[notes_col].to_list()
+        labels = pipe(to_infer, padding=True, truncation=True)
 
         edited_labels = []
         for lab in labels:
             edited = lab["label"]
             edited = edited.replace("LABEL_", "")
-            actual= label_dict[edited]
+            actual = label_dict[edited]
             edited_labels.append(int(actual))
 
         scores = []
         for lab in labels:
             scores.append(lab["score"])
 
-        results=[]
+        results = []
         for lab, scr in zip(edited_labels, scores):
             if scr >= cutoff:
                 results.append(lab)
@@ -208,7 +223,6 @@ class Inference:
                 results.append(None)
 
         return results
-
 
     def get_substance(self, notes, notes_col, cutoff=0.9):
         """
@@ -218,8 +232,16 @@ class Inference:
         :param cutoff: same as above
         :return: a list of labels
         """
+
+        if self.substance_model is not None:
+            pipe = self.generate_pipeline(model_dir=self.substance_model,
+                                          labels=self.substance_labels,
+                                          taks_name="substance", task_type="classification")
+        else:
+            raise NoModelError("There is no substance model")
+
         to_infer = notes[notes_col].to_list()
-        labels = self.substance_clf(to_infer, padding=True, truncation=True)
+        labels = pipe(to_infer, padding=True, truncation=True)
 
         edited_labels = []
         for lab in labels:
@@ -249,14 +271,24 @@ class Inference:
         :param cutoff: same as above
         :return: labels in a list
         """
+        if self.io_model is not None:
+            pipe = self.generate_pipeline(model_dir=self.io_model,
+                                          labels=2,
+                                          taks_name="io", task_type="classification")
+        else:
+            raise NoModelError("There is no io model")
+
         to_infer = notes[notes_col].to_list()
-        labels = self.io_clf(to_infer, padding=True, truncation=True)
+        labels = pipe(to_infer, padding=True, truncation=True)
 
         edited_labels = []
         for lab in labels:
             edited = lab["label"]
             edited = edited.replace("LABEL_", "")
-            edited = int(edited)+1
+            if edited == "0":
+                edited = "I"
+            else:
+                edited = "O"
             edited_labels.append(edited)
 
         scores = []
@@ -271,3 +303,150 @@ class Inference:
                 results.append(None)
 
         return results
+
+    def get_ampm(self, notes, notes_col, cutoff=0.9):
+        """
+        
+        :param notes:
+        :param notes_col:
+        :param cutoff:
+        :return:
+        """
+        if self.io_model is not None:
+            pipe = self.generate_pipeline(model_dir=self.ampm_model,
+                                          labels=self.ampm_labels,
+                                          taks_name="ampm", task_type="classification")
+        else:
+            raise NoModelError("There is no ampm model")
+
+        to_infer = notes[notes_col].to_list()
+        labels = pipe(to_infer, padding=True, truncation=True)
+        edited_labels = []
+        for lab in labels:
+            edited = lab["label"]
+            edited = edited.replace("LABEL_", "")
+            if edited == "0":
+                edited = "a"
+            else:
+                edited = "p"
+            edited_labels.append(edited)
+
+        scores = []
+        for lab in labels:
+            scores.append(lab["score"])
+
+        results = []
+        for lab, scr in zip(edited_labels, scores):
+            if scr >= cutoff:
+                results.append(lab)
+            else:
+                results.append(None)
+
+        return results
+
+    def get_location(self, notes, notes_col, label_dict, cutoff=0.85):
+        """
+
+        :param notes:
+        :param notes_col:
+        :param label_dict:
+        :param cutoff:
+        :return:
+        """
+        if self.io_model is not None:
+            pipe = self.generate_pipeline(model_dir=self.location_model,
+                                          labels=self.location_labels,
+                                          taks_name="location", task_type="classification")
+        else:
+            raise NoModelError("There is no location model")
+
+        to_infer = notes[notes_col].to_list()
+        labels = pipe(to_infer, padding=True, truncation=True)
+
+        edited_labels = []
+        for lab in labels:
+            edited = lab["label"]
+            edited = edited.replace("LABEL_", "")
+            actual = label_dict[edited]
+            edited_labels.append(int(actual))
+
+        scores = []
+        for lab in labels:
+            scores.append(lab["score"])
+
+        results = []
+        for lab, scr in zip(edited_labels, scores):
+            if scr >= cutoff and lab != '0':
+                results.append(lab)
+            else:
+                results.append(None)
+
+        return results
+
+    def get_area(self, notes, notes_col, label_dict, cutoff=0.85):
+        """
+
+        :param notes:
+        :param notes_col:
+        :param label_dict:
+        :param cutoff:
+        :return:
+        """
+        if self.io_model is not None:
+            pipe = self.generate_pipeline(model_dir=self.area_model,
+                                          labels=self.area_labels,
+                                          taks_name="area", task_type="classification")
+        else:
+            raise NoModelError("There is no area model")
+
+        to_infer = notes[notes_col].to_list()
+        labels = pipe(to_infer, padding=True, truncation=True)
+
+        edited_labels = []
+        for lab in labels:
+            edited = lab["label"]
+            edited = edited.replace("LABEL_", "")
+            actual = label_dict[edited]
+            edited_labels.append(int(actual))
+
+        scores = []
+        for lab in labels:
+            scores.append(lab["score"])
+
+        results = []
+        for lab, scr in zip(edited_labels, scores):
+            if scr >= cutoff and lab != '0':
+                results.append(lab)
+            else:
+                results.append(None)
+
+        return results
+
+    def get_embeddings(self, notes, notes_col):
+        """
+        calculate embeddings for the cleaned up note texts this will be part of the full text search and outlier
+        detection methods
+        :param notes_col: notes, sames as above
+        :param tasks: list of tasks to be passed to the model, if None just plain embeddings will be returned
+        :return: a dictionary of embeddings where key is the task and the value is the embedding
+        """
+        if self.io_model is not None:
+            pipe = self.generate_pipeline(model_dir=self.io_model,
+                                          labels=2,
+                                          taks_name="embeddings", task_type="embeddings")
+            model = pipe[0].to(self.device)
+            tokenizer = pipe[1]
+        else:
+            raise NoModelError("There is no embedding model")
+
+        notes=notes[notes_col].to_list()
+        tokenized=tokenizer(notes, padding=True, truncation=True, return_tensors="pt",
+                            max_length=1024)
+        tokenized=tokenized.to(self.device)
+
+        with torch.no_grad():
+            embeddings = model(**tokenized)[0][:, 0]
+
+        return embeddings.to("cpu")
+
+

@@ -1,0 +1,36 @@
+name: chirpp_gpu
+channels:
+  - pytorch
+  - nvidia
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch 
+  - pytorch-cuda=12.4
+  - cudatoolkit
+  - cuda-nvcc
+  - pip
+  - pip:
+      - numpy==1.26.4
+      - cupy-cuda12x
+      - pandas==2.1.0
+      - Levenshtein
+      - spacy==3.5
+      - medspacy
+      - sentence-transformers
+      - transformers==4.30
+      - tokenizers
+      - spacy_transformers
+      - sentencepiece
+      - safetensors
+      - pyyaml
+      - python-dateutil
+      - openpyxl
+      - SQLAlchemy==1.4.54
+      - python-dotenv
+      - psycopg2
+      - nvidia-cuda-runtime-cu12==12.4.*
+      - flash-attn
+      - einops
+variables:
+  PYTHONNOUSERSITE: '0'
