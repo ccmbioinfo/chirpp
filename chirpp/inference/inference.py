@@ -1,25 +1,31 @@
+import pandas as pd
 import torch
-from sentence_transformers import SentenceTransformer, util
-from transformers import pipeline, AutoModelForSequenceClassification, AutoTokenizer, AutoModelForSeq2SeqLM
 
+from transformers import (pipeline, AutoModelForSequenceClassification,
+                          AutoTokenizer)
+
+from sentence_transformers import SentenceTransformer
+from llama_cpp import Llama
 from chonkie import SemanticChunker
 from chonkie import Model2VecEmbeddings
 
+from chirpp.inference.prompts import prompt_dict
 
 class NoModelError(Exception):
     pass
 
-from chirpp.inference.config import *
-
 class SemanticChunking:
-    def __init__(self, config):
+    def __init__(self, chunking_model, chunk_size=100, min_sentences=1,
+                 threshold=0.8):
         """
 
-        :param chunking_mode:
-        :param embedding_model:
+        :param chunking_model:
+        :param chunk_size:
+        :param min_sentences:
+        :param threshold:
+        :param text_embedding_kwargs
         """
         self.chunking_model = Model2VecEmbeddings(chunking_model)
-        self.embedding_model =
         self.chunk_size=chunk_size
         self.min_sentence=min_sentences
         self.threshold=threshold
@@ -36,21 +42,12 @@ class SemanticChunking:
         chunks = chunker.chunk(notes) #this is a list of list of strings
         return chunks
 
-    def get_embeddings(self, texts):
-        model = SentenceTransformer(self.config["text_embedding_model"]["name"],
-                                    **text_embedding_kwargs)
-        embeddings = self.embedding_model.encode(texts)
-        return embeddings
-
-
 class Inference:
     """
     This will perform the inference for classification and summarization
     """
 
-    def __init__(self, classification_model, summarization_model, classification_labels,
-                 intent_model, intent_labels, substance_model, substance_labels, io_model, io_labels,
-                 device=None):
+    def __init__(self, model_dict, notes, device=None):
         """
         init method, specify pipeline parameters for classification and summarization
         :param classification_model: model directory for the trained classification model
@@ -59,145 +56,153 @@ class Inference:
         :param device: whether to use gpu or cpu, if None will default to whatever gpu torch finds or cpu
         """
         if device is None:
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        if classification_model is not None:
-            model = AutoModelForSequenceClassification.from_pretrained(classification_model, num_labels=classification_labels)
-            tokenizer = AutoTokenizer.from_pretrained(classification_model, padding="max_length")
-            self.clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
-            raise NoModelError("no classification model provided")
+            self.device = device
+        self.models=model_dict
+        self.notes=notes
 
-        if summarization_model is not None:
-            model = AutoModelForSeq2SeqLM.from_pretrained(summarization_model)
-            tokenizer = AutoTokenizer.from_pretrained(summarization_model, padding="max_length", truncation=True)
-            self.summarizer = pipeline("summarization", model=model, tokenizer=tokenizer, device=device)
-        else:
-            raise NoModelError("no summarization model provided")
+    #TODO return tuple, 0/1 chirpp or not and the actual probs
+    def classify(self):
+        model_config=self.models["classification"]
+        model=self._get_model(model_config)
+        probs=model(self.notes, model_config["labels"])
+        results=self._replace_labels(probs, model_config["labels"], model_config["cutoff"])
+        return results
 
-        if intent_model is not None:
-            model = AutoModelForSequenceClassification.from_pretrained(intent_model,
-                                                                       num_labels=intent_labels)
-            tokenizer = AutoTokenizer.from_pretrained(intent_model, padding="max_length")
-            self.intent_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
-        else:
-            raise NoModelError("There is no intent model")
 
-        if substance_model is not None:
-            model = AutoModelForSequenceClassification.from_pretrained(substance_model,
-                                                                       num_labels=substance_labels,
-                                                                       ignore_mismatched_sizes=True)
-            tokenizer = AutoTokenizer.from_pretrained(substance_model, padding="max_length")
-            self.substance_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
-        else:
-            raise NoModelError("There is no substance model")
+    def summarize(self):
+        model_config = self.models["summary"]
+        outputs=self._run_llama(model_config)
 
-        if io_model is not None:
-            model = AutoModelForSequenceClassification.from_pretrained(io_model,
-                                                                       num_labels=io_labels)
-            tokenizer = AutoTokenizer.from_pretrained(io_model, padding="max_length")
-            self.io_clf = pipeline("text-classification", model=model, tokenizer=tokenizer, device=device)
-        else:
-            raise NoModelError("There is no inside outside model")
+        # TODO parse
+        return outputs
 
-    def classify(self, notes, note_col="Note Text", include_labels=False):
-        """
-        :param notes: pre processed notes as a pd dataframe
-        :param note_col: the column that contains the preprocessed notes
-        :param include_labels: whether to inlcude the prediction labels, if false only the probability of being a chirpp
-        is returned
-        :return: model probabilities of being a chirpp case
-        """
+    def intent(self):
+        model_config = self.models["intent"]
+        model = self._get_model(model_config)
+        probs = model(self.notes, model_config["labels"])
+        results = self._replace_labels(probs, model_config["labels"], model_config["cutoff"])
+        return results
 
-        if self.clf is None:
-            raise NoModelError("No model has been specified for classification")
+    def substance(self):
+        model_config = self.models["substance"]
+        outputs = self._run_llama(model_config)
 
-        to_infer = notes[~notes[note_col].isnull()][note_col].copy().to_list()
-        labels = self.clf(to_infer, padding=True, truncation=True)
+        # TODO parse
+        return outputs
 
-        edited_labels = []
-        for lab in labels:
+    def io(self):
+        model_config = self.models["io"]
+        outputs = self._run_llama(model_config)
+
+        # TODO parse
+        return outputs
+
+    def time(self):
+        model_config = self.models["time"]
+        outputs = self._run_llama(model_config)
+
+        # TODO parse
+        return outputs
+
+    def date(self):
+        model_config = self.models["date"]
+        outputs = self._run_llama(model_config)
+
+        # TODO parse
+        return outputs
+
+    def ampm(self):
+        model_config = self.models["ampm"]
+        outputs = self._run_llama(model_config)
+
+        # TODO parse
+        return outputs
+
+    def area(self):
+        model_config = self.models["area"]
+        outputs = self._run_llama(model_config)
+
+        # TODO parse
+        return outputs
+
+    def safety(self):
+        model_config = self.models["safety"]
+        outputs = self._run_llama(model_config)
+
+        # TODO parse
+        return outputs
+
+    def location(self):
+        model_config = self.models["location"]
+        outputs = self._run_llama(model_config)
+
+        # TODO parse
+        return outputs
+
+    def sports(self):
+        model_config = self.models["sports"]
+        outputs = self._run_llama(model_config)
+
+        # TODO parse
+        return outputs
+
+    def chunk(self):
+        model_config = self.models["classification"]
+        model=self._get_model(model_config)
+        chunks=model.chunk(self.notes)
+        return chunks
+
+    #TODO
+    def embed(self, chunks):
+        model_config = self.models["embeddings"]
+        model=self._get_model(model_config)
+        # this is a list of lists of ndarrays in the same order as the chunks which are in the
+        # same order as the notes
+        embeddings=[]
+        for text in chunks:
+            text_embeddings=model.encode(text, convert_to_tensor=False)
+            embeddings.append(text_embeddings)
+        # this will return a tensor of shape (n_chunks, embedding_dim) I need to split it
+        # and make it something postgres compatible
+        return embeddings
+
+    # This is fixed, I might add something like specify which steps but I am not sure that it's needed
+    def pipeline(self):
+        pass
+
+    def _get_model(self, config):
+        if config["type"] == "classification":
+            m = AutoModelForSequenceClassification.from_pretrained(config["model_dir"],
+                                                                   config["num_labels"])
+            t = AutoTokenizer.from_pretrained(config["model_dir"], padding=config["max_length"],
+                                                      truncation=config["truncation"])
+            model = pipeline("text-classification", model=m, tokenizer=t, device=self.device)
+        elif config["type"] == "gguf":
+            model=Llama(model_path=config["model_dir"], n_ctx=4096, n_gpu_layers=0,
+                        n_threads=config["n_threads"])
+        elif config["type"] == "chunking":
+            model=SemanticChunking(chunking_model=config["model"],
+                                   chunk_size=config["chunk_size"],
+                                   min_sentences=config["min_sentences"],
+                                   threshold=config["threshold"])
+        elif config["type"] == "embeddings":
+            model=SentenceTransformer(config["model_dir"])
+
+        return model
+
+    def _replace_labels(self, preds, label_dict, cutoff):
+
+        edited_labels=[]
+        for lab in preds:
             edited = lab["label"]
             edited = edited.replace("LABEL_", "")
-            edited = int(edited)
-            edited_labels.append(edited)
-
-        scores = []
-        for lab in labels:
-            scores.append(lab["score"])
-
-        report_probs = []
-        for label, score in zip(edited_labels, scores):
-            if label == 0:
-                report_probs.append(1 - score)
-            else:
-                report_probs.append(score)
-
-        if include_labels:
-            return edited_labels, report_probs
-        else:
-            return report_probs
-
-    def summarize(self, notes, note_col="Note Text", truncation=True, max_length=128):
-        """
-        run summarization using the specified moden in __init
-        :param notes: notes, dataframe
-        :param note_col: a column within the dataframe to summarize ideally this is the pre-processed notes
-        :param truncation: whether to trunctate the texts if its longer than the model max
-        :param max_length: model max length
-        :return: summaries in a list
-        """
-        if self.summarizer is None:
-            raise NoModelError("No model has been specified for summarization")
-
-        to_infer = [str(note) for note in notes[note_col].to_list()]
-        summaries = self.summarizer(to_infer, truncation=truncation, max_length=max_length)
-        summary_texts = []
-        for summary in summaries:
-            summary_texts.append(summary["summary_text"])
-
-        return summary_texts
-
-    def calculate_cosine_distances(self, model, notes, summaries):
-        """
-        calculate the cosine distance between the generated summary and the cleaned note text, this uses the cleaned text not just the hpi section
-        :param model: name of the model
-        :param notes: list of "sections_removed" notes
-        :param summaries: list of summaries
-        :return: list of cosine distances in the same order as the notes and the summaries
-        """
-        model = SentenceTransformer(model)
-
-        distances = []
-        for summary, note in zip(notes, summaries):
-            em1 = model.encode(summary)
-            em2 = model.encode(note)
-            dist = util.cos_sim(em1, em2)
-            distances.append(float(dist[0]))
-
-        return distances
-
-    def get_intent(self, notes, notes_col, label_dict, cutoff=0.8):
-        """
-        run intent classification with the specified model in __init__
-        :param notes: dataframe with the notes
-        :param notes_col: column where the notes are ideally these are pre-processed
-        :param label_dict: label dict to look up chirpp codes to translate from torch labels
-        :param cutoff: the model confidence cutoff, anything below that will be left blank
-        :return: labels for intent in a list
-        """
-        to_infer=notes[notes_col].to_list()
-        labels = self.intent_clf(to_infer, padding=True, truncation=True)
-
-        edited_labels = []
-        for lab in labels:
-            edited = lab["label"]
-            edited = edited.replace("LABEL_", "")
-            actual= label_dict[edited]
+            actual=label_dict[edited]
             edited_labels.append(int(actual))
 
-        scores = []
-        for lab in labels:
+        scores=[]
+        for lab in preds:
             scores.append(lab["score"])
 
         results=[]
@@ -206,68 +211,36 @@ class Inference:
                 results.append(lab)
             else:
                 results.append(None)
-
         return results
 
-
-    def get_substance(self, notes, notes_col, cutoff=0.9):
-        """
-        determine whether substances are mentioned
-        :param notes: same as abvoe
-        :param notes_col: same as above
-        :param cutoff: same as above
-        :return: a list of labels
-        """
-        to_infer = notes[notes_col].to_list()
-        labels = self.substance_clf(to_infer, padding=True, truncation=True)
-
-        edited_labels = []
-        for lab in labels:
-            edited = lab["label"]
-            edited = edited.replace("LABEL_", "")
-            edited = int(edited) + 1
-            edited_labels.append(edited)
-
-        scores = []
-        for lab in labels:
-            scores.append(lab["score"])
+    def _run_llama(self, config):
+        model = self._get_model(config)
+        messages = [
+            {"role": "system", "content": prompt_dict["system"]},
+            {"role": "user", "content": None},
+        ]
 
         results = []
-        for lab, scr in zip(edited_labels, scores):
-            if scr >= cutoff:
-                results.append(lab)
-            else:
-                results.append(None)
+        for note in self.notes:
+            messages[1]["content"] = prompt_dict[config["prompt_name"]] + note
+            output = model.create_chat_completion(messages=messages)
+            results.append(output["choices"][0]["message"]["content"])
 
         return results
 
-    def get_io(self, notes, notes_col, cutoff=0.9):
+    def _get_probs(self, database, start_date, complaint_filter):
         """
-        determine whether the incident happened inside or outside
-        :param notes: same as above
-        :param notes_col: same as above
-        :param cutoff: same as above
-        :return: labels in a list
+        Get the minimum probability of a visit based on chief complaints and start date.
+        :param database:
+        :param start_date:
+        :param complaint_filter:
+        :return:
         """
-        to_infer = notes[notes_col].to_list()
-        labels = self.io_clf(to_infer, padding=True, truncation=True)
+        probs = pd.read_sql(
+            f"select min(probs) from visits where chief_complaint in {','.join(complaint_filter)} and arrival_date >= '{start_date}'",
+            con=database.engine)
 
-        edited_labels = []
-        for lab in labels:
-            edited = lab["label"]
-            edited = edited.replace("LABEL_", "")
-            edited = int(edited)+1
-            edited_labels.append(edited)
+        return probs[0]
 
-        scores = []
-        for lab in labels:
-            scores.append(lab["score"])
 
-        results = []
-        for lab, scr in zip(edited_labels, scores):
-            if scr >= cutoff:
-                results.append(lab)
-            else:
-                results.append(None)
 
-        return results
