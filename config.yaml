@@ -49,36 +49,107 @@ pre_process:
 
 ###### INFERENCE ########
 inference:
-  num_labels: 2
-  include_labels: false
-  max_length: 128
-  truncation: true
-  cutoff: 0.95
-
-## normally there are 8 claasses but partner abuse is non-existent
-#TODO need to add spacy model here and refactor to make it a param
-  classification_model: "chirpp/models/distilbert"
-  summarization_model: "chirpp/models/t5-small"
-  distance_model: "chirpp/models/all-mpnet-base-v2"
-  io_model: "chirpp/models/distilbert_io"
-  intent_model: "chirpp/models/albert_xxl_intent"
-  substance_model: "chirpp/models/albert_xxl_sub"
-  
-  intent_labels: 7 
-  io_labels: 2
-  classification_labels: 2
-  substance_labels: 2
-  io_cutoff: 0.9
-  intent_cutoff: 0.8
-  subs_cutoff: 0.8
-  
-  intent_label_dict: {'0': '10', '1':'11', '2':'12', '3':'13', '4':'15', '5':'16', '6':'19'}
-  
-  note_col: "Note Text"
-  use_chirpp: true
-  chirpp_col: "CHIRPP Icon"
-  anonymize_summaries: false
-
+  models:
+    classification:
+      type: "classification"
+      num_labels: 2
+      include_labels: false
+      max_length: 512
+      truncation: true
+      cutoff: 0.9
+      model: "./models/distilbert"
+      labels:
+        0: false
+        1: true
+    intent:
+      type: "classification"
+      num_labels: 7
+      include_labels: false
+      max_length: 512
+      truncation: true
+      cutoff: 0.8
+      model: "./models/albert_xxl_intent"
+      labels:
+        0: 10
+        1: 11
+        2: 12
+        3: 13
+        4: 15
+        5: 16
+        6: 19
+    summary:
+      type: "gguf"
+      model: "./models/summary.gguf" # need to check this
+      prompt_name: "summary"
+      n_threads: 10
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    time:
+      type: "gguf"
+      model: "./models/time.gguf" # need to check this
+      prompt_name: "time"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    date:
+      type: "gguf"
+      model: "./models/date.gguf" # need to check this
+      prompt_name: "date"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    location:
+      type: "gguf"
+      model: "./models/location.gguf" # need to check this
+      prompt_name: "location"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    area:
+      type: "gguf"
+      model: "./models/area.gguf" # need to check this
+      prompt_name: "area"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    io:
+      type: "gguf"
+      model: "./models/io.gguf" # need to check this
+      prompt_name: "io"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    safety:
+      type: "gguf"
+      model: "./models/safety.gguf" # need to check this
+      prompt_name: "safety"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    substance:
+      type: "gguf"
+      model: "./models/substance.gguf" # need to check this
+      prompt_name: "substance"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    sports:
+      type: "gguf"
+      model: "./models/sports.gguf" # need to check this
+      prompt_name: "sports"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    chunking:
+      type: "chunking"
+      chunk_size: 128,
+      min_sentences: 1,
+      threshold: 0.5,
+      model": "./models/m2v_model",
+    embedding:
+      type: "sentence_transformer"
+      model: "models/qwen3_embedding_06B"
 
   pos_complaints: [ "Oral / Esophageal Foreign Body", "Upper Extremity Injury", "Lower Extremity Injury",
     "Burn", "Anxiety / Situational Crisis", "Head Injury", "Medical Device Problem",
