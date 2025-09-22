@@ -1,269 +1,142 @@
-# Chripp project automation
+# Sickkids ED CHIRPP processing pipeline
 
-This repository is the collective code for the chirpp automation project for Sickkids. Below are some guidelines and
-suggestions for how to collaborate effectively. Please let me know if you have other ideas and suggestions.
+This repos is still work in progress, here are some guidelines as to how to use this repo:
+You can follow along run_example.ipynb to see how to use the pipeline interactively. This is for an older version 
+where we assume that we have an excel file that has been exported from EPIC. Things have changed slightly since then.
+Now we do get some text files daily from the epic servers for cases that happened 3 days ago. These are in the VM 
+(see below)
 
-# Project Scope
+## Important files/folders
 
-There are several goals for this project they are listed below in decreasing importance (please feel free to commment
-and improve)
+All the pre-trained models should be in the models folder. I have moved these models to the vm and I will share 
+their location in a separate email. 
 
-+ Determining chirpp + cases
-+ Summarization of clinical notes
-+ Autocoding body parts
-+ Autocoding location (indoor/outdoor, area, place)
-+ Autocoding safety equipment
-+ Autocoding substances
-+ Disposition (this is partially done using the complaints and diagnoses)
-+ Determining intent
+## How to set up the enviroment
 
-This list is subject to change.
-
-At least in my mind the first 2 aims will be accomplished by fine-tuning an LLM (large language model) maybe with the
-help of a rule based pre-processing, the rest we will try to accomplish by using rule based methods (i.e. spacy,
-scispacy etc.). Each of us will have specific tasks, please create a project for what areas you are responsible for
-under the projects tab. This way we can keep track of who is doing what.
-
-For each aim please create a folder with a name that describes what the task is and see below for some guidelines for
-how to collaborate and use the same repository.
-
-# Guidelines
-
-Here are some basic guidelines that I find helpful when collaborating on a coding project with multiple people. Feel
-free to make suggestions and propose changes to the document. The aim of the repository is to keep track of our progress
-and make sure things are working properly and there is clear, precise and effective communication between team members
-and everyone is (including myself) is held accountable for their roles.
-
-## Creating a local git repo
-
-Github is built on top of git. Git is a popular code version control system that tracks your edits to files and whether
-new files are added or old ones are delelted. To create a git repository in a directory of your choosing
-
-```bash
-cd mydirectory
-git init
-```
-
-this will create a blank git repository and you will be in the `main` branch.
-
-Better yet clone this repository using:
-
-```bash
-git clone https://github.com/celalp/chirpp
-```
-
-This branch is reserved for the "production" code and things will not be added here until they are tested and ready to
-go. You can create a new branch by:
-
-```bash
-git branch new_branch
-```
-
-you can switch between branches using:
-
-```bash
-git checkout old_branch
-```
-
-to add new files/folder to your git repository use:
-
-```bash
-git add new_file.py
-```
-
-to commit use:
-
-```bash
-git commit -m "commit message"
-```
-
-See below for more guidelines on branching, commit pushes and pull requests.
-
-You can configure your remote repository with:
-
-```bash
-git remote add origin https://github.com/celalp/chirpp.git
-```
-
-and you can push using
-
-```bash
-git push -u origin <branch name>
-```
-
-Please create a `.gitignore` file to keep the unwanted from being added and commited to the repository. 
-
-## Structure
-
-Based on people experience this will be a mainly python repository. Therefore we should stick to some basic norms to
-make our lives easier when we are reading each others code. This section is about how the repository is structured, for
-how the code should be see below.
-
-Find a clear but short name for your task obviously `myawesomecode` is not an appropritae name for a folder or python
-code but neither is `scibertsummarizerforclinicalnotesbasedonpreviouscomments`. Something like `summarizer` is a much
-better choice. While naming folders and files try and be as explicit as possible so if your code does not summarize but
-select sections of notes `section_selector` might be more suitable.
-
-Within each folder there should be at least one python module with the same name, this module will contain the main code
-that does the task. This does not mean that it will contain **all** the code related to the task. Have a clear separtion
-of different kinds of things each module does and try to contain each of these in their respective module. You can
-make this as a CLI script that is callable with arguments (see below) or you can choose to include another file
-(this can be python or bash -let's keep things standard, if you use bash please set `-oe pipefail`).
-
-For processing data, and general manipulation tasks create a module called `utils.py` this will contain the utilities
-that are helper functions and classes but do not perform the main task. For example: a function that takes all the
-tab (`\t`) and converts them to new lines (`\n`) will be in the utils.
-
-There is no limit to how many modules you can create but one helpful rule I find is to focus on the task not on the
-code. Each task should get its own module that is then imported by the main module.
-
-In addition to code your folder should also contain a `README.md` that is properly formatted in markdown style (like
-this README). This
-document will include:
-
-+ A brief summary of what the task(s) is (are)
-+ How they are accomplished
-+ list of 3rd party modules
-+ detailed description of modules
-+ usage instructions for main classes
-
-Additionally please include a requirements.txt (not a `setup.py`) within your folder. If applicable also include
-versions of packages. If your code requires non-python dependencies include instructions as to how to set up the
-environment.
-
-If you are using conda you can choose to inlcude an `enviroment.yaml`. Please use these names in and not something else
-to make sure that we are all in the same page.
-
-## Code style
-
-This is a python project so at the very least we will stick to PEP8 guides with 120 characters per line (we can change
-that if you'd like).
-
-Each function/class should contain detailed docstring that has at the very least the following information
-
-+ What does the function do use common sense in describing the function, if the task is simple the description can be
-  simple
-+ parameters and types, we can use reST style docstrings
-+ outputs
-
-for inputs like `*args` and `**kwargs` describe how they might be used and how they are passed to different functions
-inside the function.
-
-Avoid lambdas unless the task is extremely simple, same goes for list comprehensions. There is no performance
-cost/benefit but a `for` loop is much easier to read.
-
-For classes use CamelCase, for functions use lowercase. In classes there should be a docstring for the class as well as
-class methods like so:
+The current enviroment.yaml is bloated. There is another yaml file called enviroment_cpu.yaml, this will install the 
+dependencies for cpu processing only. Considering there is no cpu access for the vm this should be enough for now. I 
+am adding sqlachemy to the list so we can start building the database as well. 
 
 ```python
-
-class NewClass:
-    """
-    this class does something awesome
-    """
-
-    def __init__(self, input1, input2):
-        """
-        initiate a new instance of NewClass with some basic calculations and some other things
-        param: self:, self NewClass
-        param: input1: an input1
-        param: input2 an input2
-        type: input1: pandas DataFrame
-        type: input2: bool
-        return: a dict of different awesome results
-        rtype: dict
-        """
-        pass
-
-    def method1(self, *args, **kwargs):
-        pass
-
+conda env create -f enviroment_cpu.yaml
 ```
 
-Feel free to structure your code however you wish as long as it's well documented. That said try and avoid exotic cases
-python inheritance cases and global variables and scoping out variables using `global`. Each function/class should be
-self contained and any input(s) it relies on should be passed during function call.
+This will create a conda envrionment named `chirpp` and after the initial setup (this may take a while) you can 
+activate the env with `conda activate chirpp`. I am also working on a setuy.py file for dependency installation but 
+that method does not cover non-python dependencies (like cuda libraries for the ai models) so that might never happen.
 
-Use common sense when you are structuring your code, if you really need Subclassing go for it, if you really need mixins
-that's ok too but with complexity comes side effects and convoluted code. If you think you need some of these
-features please feel free to reach out and we can discuss if we can have a simpler architecture.
+In my mind `setup.py` only exists to make the package pip installable and callable from the command line like any 
+other package to facilitate automation. After the environment creation you can activate it with `conda activate 
+chirpp_cpu` after that if you would like you can install the chirpp_code package using `pip install .`. This will 
+install the chirpp_code package like any other pip package and the generate_report.py script should be available 
+from the command line anywhere. 
 
-### Lazy vs Eager eval
+Keep in mind that you will need to activate the conda enviroment first to be able to use the package. 
 
-Try and write your code as lazy as possible. Nothing should be calculated/processed/edited unless that method is
-explicitly called. If you want method chaining that's ok too but make sure that you really need it.
+## Known issues
 
-### Dunder ("\_\_") methods and operator overloading
+Currently the substance id code does not work. I will push a fix for it in the near future. Any additional and 
+tested autofill functions will be added slowly as well. 
 
-If you choose you can set up `__str__` and `__repr__` methods of your classes and subclasses. If you want to do
-operator overloading please have a good reason to do so and make sure that it is well documented in your code and
-README.
+## Where are the epic files?
 
-### Errors and Exceptions
+They are in the same VM that we have used last summer. I have deleted your user accounts. I will try to create them 
+before I leavebut I will also share the location and the account that these files are uploaded to. I will try to 
+organize this as much as I can. I will also change the file permissions so you can have access, this also means that 
+you can delete/modify things please be careful and do not modify the raw data. Whenever you are working on a file 
+please make a copy and work on the copy, leave the original in the `/home/epic/chirpp` folder.
 
-Please code as defensively as possible. There are a lot of built-in exceptions that you can use to catch errors that
-you can foresee happening like a `FileNotFoundError`. Feel free to create your own exceptions like so:
+The IP for the VM is `172.20.4.169`. You can access the vm using a simple ssh tunnel. 
 
-```python
-class NewException(Exception):
-    pass
-```
+## Hardware requirements
 
-### Threading and multicore processing
+Whiel these script can potentially run on any cpu a gpu is highly reccomended, The minimum I have tried to run this 
+pipeline was a RTX3080Ti laptop gpu with 16GB or Vram, that said it never came close to filling up the vram so 8GB 
+might be sufficient for inference. Running it without gpu will increase the runtime significantly but I have not tested
+by how much. 
 
-Currently, I think we are all using python 3.10. While python does allow multithreaded applications with the
-`threading` module it is complicated to use. You can choose to multi core processing but please provide arguments
-(see below) to allow user to set up the number of cores that can be used. While performing multiprocessing keep in
-mind that your RAM usage basically multiplies with the number of cores you are using. Be mindful and don't crash the
-VM (not a big deal it just would take a bit for me to reset and everyone will be kicked out until the reset is done).
+## How the pipeline works
 
-### Arguments and settings
+There are 3 steps to the pipeline 
 
-For simple CLI arguments use the `argparse` module. This is an extremely flexible module and you can have subparsers
-for different modes of analysis. Please do not use a 3rd parth module like `click`. There is no need to increase the
-number of dependencies.
+### Preprocess
 
-If your code requires extensive parameters (it might for experimentation) you can have a `json` or a `yaml` file to
-keep these values as a key:value store. Make sure that this file location is NOT hardcoded but rather passed as an
-argument in the callable script.
+This portion takes the raw notes and preprocessed the provider notes for 2 things, 1) it removes patient name from 
+anywhere in the text and 2) removes unwanted sections (see `config.yaml`) from the note to reduce its size and only 
+keep relevant sections. The preprocessed notes and some other metadata is then passed to inference
 
-### Testing
+### Inference
 
-You can choose to use a testing module for your code or not. In either case please create a `tests` folder and in
-this folder have an example input and an output for your code with specific parameters. Specify the parameters
-either with a README in this folder or in a config file as described above.
+This part first classifies each ED presentation using the preprocessed notes above and assigns a probability that 
+it is indeed a chirpp case, we then use pre determined chirpp complaints that are known to be almost always chirpp 
+cases to find a cutoff value for retrival (nothing is 100% so we aim to minimize the human burden while maximizing 
+retrival) rate. The likely positive cases are then used as a proxy to determine the probability cutoff. These 
+consitute the positive cases to be further processed. 
 
-## Issues/collaboration
+After classificaion the positive cases are summarized using the fine tuned `t5-small` model. This generate a maximum 
+128 toke summary of the ED provider notes. In some instances the actual note itself is less than 128 tokens and in 
+those instances there is a message that is displayed. I have not turned that off but I might in the future. 
 
-For simple questions and communications Teams is fine for things that are code specific please create an issue and
-tag who you think is responsible or can help you with the issue. If you are tagged please try to respond in a
-reasonable time scale.
+Then we calculate the cosine similiarity between the clinical note and the summary as a guide for human review. 
 
-## When to save, when to commit, when to branch
+To assist with further autofill (though currently not used), using a hand curated list of Diagnoses I determine 
+whether a case involves an injury or not (while it is possible that there is a diagnosis and a differnet more minor 
+injury those cases are quite rare). Additionally a zero shot model (`facebook/bart-large-mnli`) is used to 
+determine whether the incident took place indoors or outdoors and whether the incident involved any kind of sport 
+(very loosely defined). These (and possibly more) will be used in filling in other column in the future. 
 
-Save your work regularly, commit sparingly. When you first start the project create a branch that you will be
-working in and stick to that branch (or branches, up to you). Please do not edit other peoples' branches but instead
-create a pull request if you think you can help them.
+### Postprocess
 
-### Commit guides
+The last step is the post processing. This takes the raw notes and the inference results and merges them into a 
+specific format. The output is an excel file, there the first sheet has the negative cases (and therfore none of the 
+autofill results) and the second sheet has the positive cases. In the second sheet there are some columns that are 
+also filled in a more crude rule based manner. Most substance mentions, indoor/outdoor, disposition and inten 
+columns are auto-populated to a large extend. These are not meant to be 100% accurate but just meant to make the 
+lives of people a little easier. 
 
-When you are done with a feature (like a function, a readme, a config file etc.) you are ready to commit. Committing
-is not for saving but for sharing. Each commit needs to address one thing. If you have done multiple things they
-need to be multiple commits. With each commit please provide a reasonable explanation of what you did with the
-commit message. This will help us track when things were edited and what the results were.
+## Modifying the pipeline 
 
-### Push guides
+Most of the important pipeline paramerters are passed in the `config.yaml` file. There are other parameters like 
+target rules of substance detection or the ED note sectionizer in the preprocess classes, those are in their own 
+respective folders. I do not reccoment changing those parameters without good reason. There was a lot of trial and 
+error to bring the pipeline to this state, this is especially true for the context rules, there are sometimes 
+unintented consequences of changing things like direction or max scope. 
 
-As long as you are following the guidelines above you can push to your branches as much as you want. Github tracks
-your git repo so if you have done multiple commits a single push will show up as multiple commits on the remote repo
-as well.
+### Adding new features
 
-### Pull requests
+If you want to add new features to the pipeline do not add them to the pipeline branch. Please create a new branch 
+or overwrite and existing branch and make your changes. When you are done create a pull request and I will review 
+the code. Whenever possible please test your code. Currently we do not have an automated testing method and test 
+cases. We can use one of the daily notes for a simple test case and use something like `pytest`. If you do not have 
+an idea for a feature and would like to contribute please consider adding unit test. 
 
-If you want to contribute to someone else's code please create a pull request unless you are actively working with
-that person. The tagged person will then review the code and will approve or edit as they see fit. Save for the
-simplest of taskt please keep the discussion within the issues section so we all know what's going on.
+For other methods please make your additions to the appropriate section of the pipeline (pre/post process or 
+inference). The additions to the main classes should be miminal. You can add functions to `utils.py` in each of the 
+step directories or create additional python modules to be called by the main class. Please the `master` branch for 
+instructions on how to use classes and general guidelines on the code.  
 
-I'm excited to work with you all on this project and sorry for the wall of text. I hope this was not all boring for
-you and it will be a good learning experience for all of us. Please let me know if you run into git issues and need 
-some config help. 
+
+## TODO
+
+There are several features that are missing form this pipeline below is a short list of what I have in mind feel 
+free to expand the list as appropriate
+
++ Autofilling more columns 
++ Creating a database of all the processed and raw notes
++ Automating the pipeline runs with a cron job
++ Moving/deleting old files after they have been imported to database
++ An S3 or S3 like storage solution to download files after they have been processed
++ A search functionality to search for specific keywords and terms
++ A UI for interacting with the database. 
+
+## ROADMAP
+
+The most important goal right now is automating the pipeline and getting the results daily. The next step is 
+importing all the results to a database. For this I have PostgreSQL in mind for several reasons. It is quite feature 
+complete and has extensions that allow for full text search that rivals elasticsearch in speed w/o the memory 
+constraints. Setting up the database and the full text extension is another important one that I can use help with. 
+For more information on that please see [here](https://www.postgresql.org/docs/current/textsearch.html)
+
+After the database is setup the next phase will include adding logging to the database so we can keep track of what 
+has been searched and used. This will be essential in the fututre if we want to build a web UI for other to search 
+the database and maybe even do the coding on the database in real time.

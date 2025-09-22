@@ -1,0 +1,203 @@
+
+
+##### PRE PROCESS
+pre_process:
+  #TODO this needs to be implemented as a param
+  epic_dump_delim: "|"
+  inference_sections: ["history_of_present_illness", "observation_and_plan", "chief_complaint", "problem_list", "diagnosis"]
+  autofill_sections: ["history_of_present_illness", "chief_complaint", "problem_list", "diagnosis"]
+
+  remove_sections: ["past_medical_history", "family_history", "patient_instructions", "education",
+  "patient_education", "medications", "allergies", "allergy", "imaging", "hospital_course",
+  "labs_and_studies", "comments", "social_history",
+  "physical_exam", "other", "user_index"]
+  
+  line_col: "LINE"
+  section_rules: "chirpp/preprocess/preprocess_patterns.json"
+  note_types:
+    Note Type: ["ED Provider Notes", "ED Triage Notes"]
+  include_cols: ["Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "LOS"]
+  group_cols: ["MRN", "Arrival Date"]
+  orientation: "front"
+  keep_unlabelled: true
+  anonymize: true
+
+  terms_to_fix:  {'hx': 'history of', '#': 'fracture', 'c/o': 'complaining of', 'f/u': 'follow up',
+  'fu': 'follow up', 'w': 'with', 'ortho': 'orthopaedics', 'psych': 'psychiatry', 'cardio': 'cardiology',
+  'ophtho': 'ophthalmology', 'ENT': 'otolaryngology', 'plastics': 'plastic surgery', 'physio': 'physiotherapy',
+  'heme': 'hematology', 'rx': 'prescription', 'tx': 'treatment', 'd': 'days ago', 'mo': 'months', 'lac': 'laceration',
+  '@': 'at', 'hpi': 'history of', 'abx': 'antibiotics', 'rom': 'range of motion', 'fx': 'fracture', 'prox': 'proximal',
+  'wb': 'weight bear', 'dist': 'distal', 'min': 'miniutes', 'mins': 'minutes', 'sec': 'seconds', 'secs': 'seconds',
+  'hr': 'hours', 'hrs': 'hours', 'fb': 'foreign body', 'hi': 'head injury', 'approx': 'approximately', 'sw': 'social worker',
+  'sx': 'symptoms', 'sh': 'self-harm', 'pt': 'patient', "pt's": "patient's", 'r': 'right', 'rt': 'right', 'l': 'left',
+  'lt': 'left', 'ft': 'feet', 'm': 'meters', 'mm': 'millimeters', 'cm': 'centimeters', 'km/h': 'kilometers per hour',
+  'kmph': 'kilometers per hour', 'kph': 'kilometers per hour', 'km': 'kilometers', 'bsa': 'Body Surface Area',
+  'tbsa': 'Total Body Surface Area', 'ed': 'emergency department', 'pip': 'proximal interphalangeal joint',
+  'mt': 'metatarsal', 'hep b': 'Hepatitis B', 'loonie': '$1 coin', 'toonie': '$2 coin', 'OCD': 'Obsessive-Compulsive Disorder',
+  'ADHD': 'Attention Deficit Hyperactivity Disorder', 'BPD': 'Borderline Personality Disorder', 'PTSD': 'Post-Traumatic Stress Disorder',
+  'MDD': 'Major Depressive Disorder', 'GDD': 'Global Developmental Delay', 'ASD': 'Autism Spectrum Disorder', 'GAD': 'Generalized Anxiety Disorder',
+  'ODD': 'Oppositional Defiant Disorder', 'LD': 'learning disability', 'DMDD': 'Disruptive Mood Dysregulation Disorder',
+  'NAFLD': 'Non-alcoholic Fatty Liver Disease', 'foosh': 'fall on an outstretched hand', 'TMJ': 'Temporomandibular Joint',
+  'MCP': 'metacarpophalangeal', 'OD': 'overdose', 'GnRH': 'Gonadotropin-Releasing Hormone', 'trans': 'transgender',
+  'WIC': 'walk-in clinic', 'si': 'suicidal ideations', 'LOC': 'altered level of consciousness', 'CT': 'Computed Tomography',
+  'TTC': 'Toronto Transit Commission', 'FMD': 'family medical doctor', 'PCP': 'primary care provider',
+  'PMD': 'doctor of primary medicine', 'MVC': 'motor vehicle collision', 'EMS': 'Emergency Medical Services',
+  'EKG': 'electrocardiogram', 'ECG': 'electrocardiogram', 'NBNB': 'non-bloody, non-bilious',
+  'dw': 'discussed with', 'RUQ': 'right upper quadrant', 'yo': 'year old', 'co': 'complaining of', 'bl': 'bilateral'}
+
+
+
+###### INFERENCE ########
+inference:
+  models:
+    classification:
+      type: "classification"
+      num_labels: 2
+      include_labels: false
+      max_length: 512
+      truncation: true
+      cutoff: 0.9
+      model: "./models/distilbert"
+      labels:
+        0: false
+        1: true
+    intent:
+      type: "classification"
+      num_labels: 7
+      include_labels: false
+      max_length: 512
+      truncation: true
+      cutoff: 0.8
+      model: "./models/albert_xxl_intent"
+      labels:
+        0: 10
+        1: 11
+        2: 12
+        3: 13
+        4: 15
+        5: 16
+        6: 19
+    summary:
+      type: "gguf"
+      model: "./models/summary.gguf" # need to check this
+      prompt_name: "summary"
+      n_threads: 10
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    time:
+      type: "gguf"
+      model: "./models/time.gguf" # need to check this
+      prompt_name: "time"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    date:
+      type: "gguf"
+      model: "./models/date.gguf" # need to check this
+      prompt_name: "date"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    location:
+      type: "gguf"
+      model: "./models/location.gguf" # need to check this
+      prompt_name: "location"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    area:
+      type: "gguf"
+      model: "./models/area.gguf" # need to check this
+      prompt_name: "area"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    io:
+      type: "gguf"
+      model: "./models/io.gguf" # need to check this
+      prompt_name: "io"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    safety:
+      type: "gguf"
+      model: "./models/safety.gguf" # need to check this
+      prompt_name: "safety"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    substance:
+      type: "gguf"
+      model: "./models/substance.gguf" # need to check this
+      prompt_name: "substance"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    sports:
+      type: "gguf"
+      model: "./models/sports.gguf" # need to check this
+      prompt_name: "sports"
+      context_length: 4096
+      max_tokens: 100
+      temperature: 0.7
+    chunking:
+      type: "chunking"
+      chunk_size: 128,
+      min_sentences: 1,
+      threshold: 0.5,
+      model": "./models/m2v_model",
+    embedding:
+      type: "sentence_transformer"
+      model: "models/qwen3_embedding_06B"
+
+  pos_complaints: [ "Oral / Esophageal Foreign Body", "Upper Extremity Injury", "Lower Extremity Injury",
+    "Burn", "Anxiety / Situational Crisis", "Head Injury", "Medical Device Problem",
+    "Depression / Suicidal / Deliberate Self Harm", "Paediatric Disruptive Behaviour",
+    "Laceration/Puncture", "Abrasion", "Neck Trauma", "Noxious Inhalation", "Foreign Body, Nose",
+    "Post-operative Complications", "Overdose Ingestion", "Bizarre Behaviour", "Cast Check",
+    "Foreign Body Ear", "Major Trauma - Penetrating", "Eye Trauma", "Concern For Patient Welfare",
+    "Suture / Staple Removal", "Major Trauma - Blunt", "Foreign Body, Skin", "Violent / Homicidal Behaviour",
+    "Sexual Assault", "Substance Misuse / Intoxication", "Hypothermia", "Traumatic Back / Spine Injury",
+    "Nasal Trauma", "Foreign Body, Eye", "Respiratory Foreign Body", "Bite", "Facial Trauma",
+    "Chemical Exposure, Eye", "Genital Trauma", "Amputation", "Social Problem", "Hallucinations / Delusions",
+    "Insomnia", "Ear Injury", "Chemical Exposure", "Foreign Body in Rectum", "Isolated Chest Trauma - Blunt",
+    "Isolated Abdominal Trauma - Blunt", "Anal / Rectal Trauma", "Multisystem Trauma - Blunt", "Foreign Body, Vagina",
+    "Body Fluid Exposure", "Ring Removal", "Multisystem Trauma - Penetrating", "Near Drowning", "Isolated Abdominal Trauma - Penetrating",
+    "Isolated Chest Trauma - Penetrating", "Substance Withdrawal", "Electrical Injury", "Frostbite / Cold Injury",
+    "Cardiac Arrest (Traumatic)", "Foreign Body in Eye" ]
+
+ #TODO need to add pos_based on diagnosis
+
+
+  final_columns: ["MRN", "Arrival Date", "Note Text", "probs", "summary", "cosine_similarity", "Diagnosis",
+               "Problem List", "Chief Complaint"]
+
+
+
+###### POST PROCESS ######
+post_process:
+  cc_filter: ['depression / suicidal / deliberate self harm', 'ingestion', 'chemical', 'burn',
+  'concern for patient wellfare', 'overdose ingestion', 'substance misuse / intoxication',
+  'vomiting and/or nausea', 'behaviour', 'altered level Of consciousness']
+
+  diag_pl_filter: ['ingestion', 'poisoning', 'overdose', 'exposure', 'anxiety', 'substance',
+                   'intoxication', 'chemical', 'depression', 'suicidal','depressive', 'crisis',
+                   'instability', 'burn', 'self-harm', 'vomitting', 'irritation', 'suicide',
+                   'depressed', 'anorexia nervosa', 'caustic', 'corrosive']
+
+
+  report_header: ["MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "INJ DATE", "Hr", "Min", "AM/PM",
+  "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "W4P", "NO1", "BP1", "NO2", 
+  "BP2", "NO3", "BP3", 'veh', 'veh p',"Notes", 'LOS', "DISP", "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
+  "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition", "to_summarize"]
+
+  note_types: ['ED Triage Notes', 'ED Provider Notes', 'PS Initial Consult', 'Consults', 
+              'Consult Follow Up', 'Admission', 'Discharge Summary', 'Progress Notes', 
+              'Assessment & Plan Note',  'ED Trauma Note', 'ED Trauma Notes',
+              'ED Procedure Note', 'Procedures','Op Note', 'Transfer In / Advice Note']
+              
+
+
+
+

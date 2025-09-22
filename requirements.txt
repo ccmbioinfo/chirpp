@@ -1,0 +1,14 @@
+pandas~=2.1.0 # this is to avoid the cursor thing, I am stil not sure how to fix it
+Levenshtein
+numpy
+sqlalchemy==1.4.54
+python-dotenv
+psycopg2
+chonkie[all]
+model2vec
+pgvector
+transformers
+spacy
+medspacy
+spacy-transformers
+openpyxl
