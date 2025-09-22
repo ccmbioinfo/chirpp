@@ -1,98 +1,91 @@
 #! python
 import argparse as arg
-import os
 from datetime import datetime
 
 import pandas as pd
 import yaml
+
 from torch.cuda import is_available
 from transformers import logging as hf_logging
+from dotenv import dotenv_values
+from sqlalchemy import create_engine
 
 hf_logging.set_verbosity_error()
 
-from chirpp.inference.inference import Inference
-from chirpp.postprocess.postprocess import PostProcess
-from chirpp.preprocess.preprocess import SectionRemover, Preprocess
-from chirpp.preprocess.utils import deidentify
+from chirpp.preprocess.preprocess import Preprocess, SectionRemover
 
+from chirpp.inference.inference import Inference
+
+from chirpp.database.database import DataBase
+from chirpp.postprocess.postprocess import PostProcess
+
+# we will not be generating any more excel outputs so there is no to_excel option
+# the code will stay in the post process for legacy support
 parser = arg.ArgumentParser(description='Preprocess notes file for inference')
 parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
-parser.add_argument('-o', '--outname', type=str, help='Path to outputs')
 parser.add_argument('-c', '--config', type=str, help='config file in yaml format', default="config.yaml",
                     action="store")
-
+parser.add_argument('--env_file', help='env_file that contains the information about db connection', action="store")
 args = parser.parse_args()
 
+
 with open(args.config) as f:
-    params = yaml.safe_load(f)
+    config = yaml.safe_load(f)
 
 if is_available():
     device = "cuda:0"
 else:
     device = "cpu"
 
-# preprocessing, remove unwanted sections and keep raw notes in memory
-if "additional_rules" in list(params["pre_process"].keys()):
-    additional_rules = params["pre_process"]["additional_rules"]
+
+
+##### DATABASE CONNECTION #####
+env_values=dotenv_values(args.env_file)
+
+engine = create_engine('postgresql+psycopg2://{}:{}@{}:{}/{}'. \
+                           format(env_values["DB_USER"],
+                                  env_values["DB_PWD"],
+                                  env_values["DB_HOST"],
+                                  env_values["DB_PORT"],
+                                  env_values["DB_NAME"]))
+
+database=DataBase(engine)
+
+
+##### PREPROCESSING #####
+preprocess_config=config["pre_process"]
+
+if "additional_rules" in list(preprocess_config.keys()):
+    additional_rules = preprocess_config["additional_rules"]
 else:
     additional_rules = None
 
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating Section remover")
-
 section_remover_for_inference = SectionRemover(lang_model="en_core_web_trf",
-                                               remove_sections=params["pre_process"]["remove_sections"],
-                                               keep_sections=params["pre_process"]["inference_sections"],
-                                               rules_json=params["pre_process"]["section_rules"],
+                                               remove_sections=preprocess_config["remove_sections"],
+                                               keep_sections=preprocess_config["inference_sections"],
+                                               rules_json=preprocess_config["section_rules"],
                                                additional_rules=additional_rules,
                                                gpu=device)
 
-# remove sections and generate inference notes these will be used for inference
+preprocess=Preprocess(args.notes, preprocess_config, section_remover_for_inference)
+merged_notes, processed_notes = preprocess.preprocess_pipeline()
 
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Preprocessing")
 
-preprocessed_notes = Preprocess(args.notes, params["pre_process"]["terms_to_fix"])
+#### INFERENCE #####
 
-preprocessed_notes = preprocessed_notes.read_raw_notes()
-
-additional_columns = params["pre_process"]["include_cols"] + [params["pre_process"]["line_col"]]
-
-preprocessed_notes = preprocessed_notes.get_relevant_notes(filters=params["pre_process"]["note_types"],
-                                                           additional_columns=additional_columns)
-include_cols = params["pre_process"]["include_cols"]
-include_cols.append(params["pre_process"]["line_col"])
-preprocessed_notes = preprocessed_notes.merge_notes(section_remover=section_remover_for_inference,
-                                                    include_cols=include_cols,
-                                                    group_cols=params["pre_process"]["group_cols"],
-                                                    orientation=params["pre_process"]["orientation"],
-                                                    keep_unlabelled=params["pre_process"]["keep_unlabelled"],
-                                                    anonymize=params["pre_process"]["anonymize"],
-                                                    language_model="en_core_web_trf",
-                                                    line_col=params["pre_process"]["line_col"])
-
-# TODO there probably is a better way than to create a copy
-inference_notes = preprocessed_notes.merged_raw.copy()
-
-inference_notes = inference_notes[~pd.isnull(inference_notes[params["inference"]["note_col"]])].copy()
+inference_config=config["inference"]
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Collecting inference models")
-# set up inference instance
-infer_notes = Inference(classification_model=os.path.abspath(params["inference"]["classification_model"]),
-                        summarization_model=os.path.abspath(params["inference"]["summarization_model"]),
-                        classification_labels=params["inference"]["classification_labels"],
-                        intent_model=os.path.abspath(params["inference"]["intent_model"]),
-                        intent_labels=params["inference"]["intent_labels"],
-                        substance_model=os.path.abspath(params["inference"]["substance_model"]),
-                        substance_labels=params["inference"]["substance_labels"],
-                        io_model=os.path.abspath(params["inference"]["io_model"]),
-                        io_labels=params["inference"]["io_labels"],
-                        device=device)
+# TODO re-write the inference class to accomodate ggufs and other types of models but load them one
+# by one to save ram/vram
 
 # get model probabilities
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classifying")
 
-probs = infer_notes.classify(inference_notes,
-                             params["inference"]["note_col"],
-                             params["inference"]["include_labels"])
+inference_notes = processed_notes.copy()
+inference_notes = inference_notes[~pd.isnull(inference_notes["processed_notes"])].copy()
+
+probs=inference.run_pipeline(inference_config)
 
 inference_notes["probs"] = probs
 inference_notes = inference_notes.sort_values(by=["probs"], ascending=False)
@@ -113,6 +106,8 @@ row_cutoff = round(num_rows * params["inference"]["cutoff"]) - 1
 # get the model prob of that row, anything above that we will summarize
 prob_cutoff = pos_based_on_complaint["probs"].tolist()[row_cutoff]
 inference_notes["probs"][complaint_filter] = 1
+
+
 
 if params["inference"]["use_chirpp"]:
     inference_notes["probs"][inference_notes[params["inference"]["chirpp_col"]] == "CHIRPP ICON"] = 1
