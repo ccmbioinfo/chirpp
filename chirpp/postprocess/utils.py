@@ -1,25 +1,6 @@
-import os
-import subprocess
-import sys
-
-import medspacy
 import pandas as pd
-import spacy
-from medspacy.context import ConText
 
-from chirpp.postprocess.extra_contex_rules import context_rules
-from chirpp.postprocess.target_rules import *
 
-if not spacy.util.is_package("en_core_web_trf"):
-    subprocess.check_call([sys.executable, "-m", "spacy", "download", "en_core_web_trf"])
-
-parse_nlp = spacy.load('en_core_web_trf', disable=["ner"])
-med_nlp = medspacy.load(medspacy_enable=['medspacy_sectionizer'])
-target = med_nlp.add_pipe("medspacy_target_matcher")
-
-context = ConText(med_nlp, rules=os.path.join(os.path.dirname(__file__), 'context_rules.json'))
-context.add(context_rules)
-target.add(substances)
 
 
 class MissingDataError(Exception):
@@ -77,7 +58,7 @@ def process_postal(postal):
         postal = str(postal).split(" ")[0]
     return postal
 
-
+# this is for the notes column in the report
 def get_report_note(df):
     """
     fill in the Notes column with some relevant information, this is a legacy function, not sure what the notes column
@@ -402,27 +383,6 @@ def injuries(dx):
     return no, bp
 
 
-# TODO change this into inference
-def get_substances(clean_text, has_substance, nlp=med_nlp):
-    """
-    finds the substances that are mentioned in the text, this may or may not (usually is) the substance that has caused
-    the incident, this is done in a context aware manner so if someone says denies alcohol that one is not captured
-    :param clean_text: processed text from preprocessing
-    :param has_substance: this is the output of substance model label.
-    :return: returns the name of the substance, sometimes this may end up being a prescribed substance that is not the cause
-    of the incident, still working on that.
-    """
-
-    if has_substance == 1:
-        doc = nlp(str(clean_text))
-        if len(doc.ents) > 0:
-            substance = ",".join(list(set([str(ent).lower() for ent in doc.ents])))
-        else:
-            substance = None
-    else:
-        substance = "."
-
-    return substance
 
 
 def get_disposition(merged_notes, disposition, no1, bp1):
@@ -448,3 +408,33 @@ def get_disposition(merged_notes, disposition, no1, bp1):
         disp_code = None
 
     return disp_code
+
+
+def touchups(data, terms):
+    """
+    these are some edge cases that we noticed while processing the notes, hopefully in the future these will be removed
+    :param data: a dataframe namely sheet2
+    :return: the same dataframe where some of the hardcoded values below changed
+    """
+    # bathroom, washroom, laminate floors, laminate indoors
+    data["AREA"][data["PHAC Narrative"].str.contains("monkey bar")] = 59
+    data["I/O"][data["PHAC Narrative"].str.contains("laminate floor")] = "I"
+    data["I/O"][data["PHAC Narrative"].str.contains("snow")] = "O"
+    data["I/O"][data["PHAC Narrative"].str.contains("washroom")] = "I"
+    data["I/O"][data["PHAC Narrative"].str.contains("bathroom")] = "O"
+    data["DISP"][data["Diagnosis"].str.lower() == "pulled elbow"] = 3
+    data["IN"][data["NO1"] == 71] = 16
+
+    # manual touchups of other requests
+    data["SPORTS CODE"] = 4
+    data["NO2"][(data["NO1"] == 12) & (data["BP1"] == 110)] = 41
+    data["BP2"][(data["NO1"] == 12) & (data["BP1"] == 110)] = 135
+    data["BP1"][data["DISP"] == 1] = 999
+    data["NO1"][data["DISP"] == 1] = 99
+    data["IN"][data["NO1"] == 71] = 16
+    data["NO2"][data["Diagnosis"].astype(str).str.lower().str.contains("monteggia")] = 13
+    data["BP2"][data["Diagnosis"].astype(str).str.lower().str.contains("monteggia")] = 430
+    data["PHAC Narrative"]=data["PHAC Narrative"].apply(replace_terms, to_fix=terms)
+    data["sd1"][pd.isna(data["sd1"])] = -1
+
+    return data

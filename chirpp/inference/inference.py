@@ -18,6 +18,24 @@ class NoModelError(Exception):
     pass
 
 
+def get_probs(database, end_date, complaint_filter, time_delta=30):
+    """
+    get the chirpp dynamic cutoff based on the previous month
+    :param database: chirpp.database.Database instance
+    :param end_date: this is the min date for the month, we are only looking at the previous month
+    :param complaint_filter: fixed list of chief complaints to filter on
+    :param time_delta: how many days back to look, default is 30
+    :return: float of the min probability for the given chief complaints in the previous month based on the distilbert model
+    """
+    #TODO this is not correct, need to add an end date filter as well
+    start_date=pd.to_datetime(end_date)+pd.Timedelta(days=time_delta)
+    probs = pd.read_sql(
+        f'select min(probs) from visits where chief_complaint in {','.join(complaint_filter)} and arrival_date >= \'{start_date} and arrival_date <= \'{end_date}\'',
+        con=database.engine)
+
+    return probs[0]
+
+
 class StopOnSequence(StoppingCriteria):
     def __init__(self, stop_sequence_ids):
         self.stop_sequence_ids = stop_sequence_ids
@@ -62,7 +80,7 @@ class Inference:
     This will perform the inference for classification and summarization
     """
 
-    def __init__(self, model_dict, notes, device=None):
+    def __init__(self, model_dict, device=None):
         """
         init method, specify pipeline parameters for classification and summarization
         :param classification_model: model directory for the trained classification model
@@ -75,17 +93,16 @@ class Inference:
         else:
             self.device = device
         self.models=model_dict
-        self.notes=notes
 
-    def classify(self):
+    def classify(self, notes):
         model_config=self.models["classification"]
         model=self._get_model(model_config)
-        probs=model(self.notes, model_config["labels"])
+        probs=model(notes, model_config["labels"])
         results=self._replace_labels(probs, model_config["labels"], model_config["cutoff"])
         return results
 
 
-    def summarize(self):
+    def summarize(self, notes):
         """
         hacky llamacpp output parsing to get the summary, this has a lot more flexibility than the rest of the columns
         because the output is just free text so it doesn't matter if there is a preceeiding or trailing space or anything like
@@ -93,148 +110,227 @@ class Inference:
         :return:
         """
         model_config = self.models["summary"]
-        outputs=self._run_causal(model_config)
+        outputs=self._run_causal(model_config, notes)
         summaries=[]
         for item in outputs:
             try:
                 sm=json.loads(item)["summary"]
             except:
-                sm=item.replace("{", "").replace("}", "").replace("summary", "").replace(":", "")
+                sm=item.replace("{", "").replace("}", "").replace("summary", "").replace("'", "").replace(":", "")
             finally:
                 summaries.append(sm)
 
         return summaries
 
-    def intent(self):
+    def intent(self, notes):
         model_config = self.models["intent"]
         model = self._get_model(model_config)
-        probs = model(self.notes, model_config["labels"])
-        results = self._replace_labels(probs, model_config["labels"], model_config["cutoff"])
+        intents = model(notes, model_config["labels"])
+        results = self._replace_labels(intents, model_config["labels"], model_config["cutoff"])
         return results
 
-    def substance(self):
+    def substance(self, notes):
         """
         parse the llamaccp output for the substance model, this is hacky because the llama outputs while mostly ok
         are not 100% reliable to have correct formatting and sometimes quites are in different placets etc.
         :return:
         """
         model_config = self.models["substance"]
-        outputs = self._run_causal(model_config)
+        outputs = self._run_causal(model_config, notes)
         subs=[]
         sub_ids=[]
         for res in outputs:
-            subid=[item.lstrip() for item in
-             res.replace("}", "").replace("{", "").replace("and ", ",").replace("'", "").split("sub_id:")[
-                 1].lower().split(",") if len(item) > 1]
-            subid=list(set(subid))
-            if len(subid)>1:
-                subs.append(1)
-                sub_ids.append(sub_ids)
-            else:
-                subs.append(2)
-                sub_ids.append(None)
-
+            try:
+                res = re.findall(r"\{[^}]*\}", res)[0].split("\n")
+                s = res[0].split(":")[1].replace(",", "")
+                i = res[1].split(":")[1].replace("}", "")
+                if i == "N\\A":
+                    i = None
+            except:
+                s = None
+                i = None
+            finally:
+                subs.append(s)
+                sub_ids.append(i)
         return subs, sub_ids
 
-
-    def safety(self):
+    #TODO this is a little heavy handed I should be able to extract more gracefully
+    def safety(self, notes):
         model_config = self.models["safety"]
-        outputs = self._run_causal(model_config)
+        outputs = self._run_causal(model_config, notes)
         sd1=[]
         sd2=[]
         sd3=[]
         sd4=[]
         sd5=[]
-        for item in outputs:
+        for res in outputs:
             try:
-                item=json.loads(item["pred"].tolist()[0].replace("'", '"'))
-                sd1.append(item["sd1"])
-                sd2.append(item["sd2"])
-                sd3.append(item["sd3"])
-                sd4.append(item["sd4"])
-                sd5.append(item["sd5"])
+                res = re.findall(r"\{[^}]*\}", res)[0].split("\n")
+                s1= res[0].split(":")[1]
+                s2 = res[1].split(":")[1]
+                s3 = res[2].split(":")[1]
+                s4 = res[3].split(":")[1]
+                s5 = res[4].split(":")[1].replace("}", "")
+                if s1=="-1":
+                    s2, s3, s4, s5 = None, None, None, None
+                if s2=="N\\A":
+                    s2=None
+                if s3=="N\\A":
+                    s3=None
+                if s4=="N\\A":
+                    s4=None
+                if s5=="N\\A":
+                    s5=None
             except:
-                item=re.sub(r"\'sd[0-9]\':", "", item).replace("}", "").\
-                    replace("{", "").replace(" ", "").replace("'", "").split(",")
-                sd1.append(item[0])
-                sd2.append(item[1])
-                sd3.append(item[2])
-                sd4.append(item[3])
-                sd5.append(item[4])
-
+                s1=None
+                s2=None
+                s3=None
+                s4=None
+                s5=None
+            finally:
+                sd1.append(s1)
+                sd2.append(s2)
+                sd3.append(s3)
+                sd4.append(s4)
+                sd5.append(s5)
         return sd1, sd2, sd3, sd4, sd5
 
-    def io(self):
+
+    def io(self, notes):
         model_config = self.models["io"]
-        outputs = self._run_causal(model_config)
+        outputs = self._run_causal(model_config, notes)
+        io=[]
+        i=None
+        for res in outputs:
+            try:
+                i=res.split(":")[1].replace("}", "")
+            except:
+                i=None
+            finally:
+                io.append(i)
+        return io
 
-        # TODO parse
-        return outputs
-
-    def time(self):
+    def time(self, notes):
         model_config = self.models["time"]
-        outputs = self._run_causal(model_config)
+        outputs = self._run_causal(model_config, notes)
+        hrs=[]
+        mins=[]
+        h=None
+        m=None
+        for res in outputs:
+            try:
+                s=res.split(":")
+                h=s[1].replace(".0", "")
+                m=s[2].replace("0", "").replace("}", "")
+                if h=="99":
+                    h=None
+                if m=="99":
+                    m=None
+            except:
+                h=None
+                m=None
+            finally:
+                hrs.append(h)
+                mins.append(m)
 
-        # TODO parse
-        return outputs
+        return hrs, mins
 
-    def date(self):
+    def date(self, notes):
         model_config = self.models["date"]
-        outputs = self._run_causal(model_config)
+        outputs = self._run_causal(model_config, notes)
+        dates=[]
+        d=None
+        for res in outputs:
+            try:
+                d=res.split(":")[1].replace("}", "")
+                if d=="99":
+                    d=None
+            except:
+                d=None
+            finally:
+                dates.append(d)
+        return dates
 
-        # TODO parse
-        return outputs
-
-    def ampm(self):
+    def ampm(self, notes):
         model_config = self.models["ampm"]
-        outputs = self._run_causal(model_config)
+        outputs = self._run_causal(model_config, notes)
+        ampm=[]
+        a=None
+        for res in outputs:
+            try:
+                a=res.split(":")[1].replace("}", "")
+                if a=="0":
+                    a=None
+            except:
+                a=None
+            finally:
+                ampm.append(a)
+        return ampm
 
-        # TODO parse
-        return outputs
-
-    def area(self):
+    def area(self, notes):
         model_config = self.models["area"]
-        outputs = self._run_causal(model_config)
+        outputs = self._run_causal(model_config, notes)
+        area=[]
+        a=None
+        for res in outputs:
+            try:
+                a=res.split(":")[1].replace("}", "")
+                if a=="0":
+                    a=None
+            except:
+                a=None
+            finally:
+                area.append(a)
+        return area
 
-        # TODO parse
-        return outputs
-
-    def location(self):
+    def location(self, notes):
         model_config = self.models["location"]
-        outputs = self._run_causal(model_config)
+        outputs = self._run_causal(model_config, notes)
+        location=[]
+        for res in outputs:
+            try:
+                l=res.split(":")[1].replace("}", "")
+                if l=="0":
+                    l=None
+            except:
+                l=None
+            finally:
+                location.append(l)
+        return location
 
-        # TODO parse
-        return outputs
-
-    def sports(self):
+    def sports(self, notes):
         model_config = self.models["sports"]
-        outputs = self._run_causal(model_config)
+        outputs = self._run_causal(model_config, notes)
+        sports=[]
+        s=None
+        for res in outputs:
+            try:
+                s=res.split(":")[1].replace("}", "")
+            except:
+                s=None
+            finally:
+                sports.append(s)
+        return sports
 
-        # TODO parse
-        return outputs
-
-    def chunk(self):
-        model_config = self.models["classification"]
+    def chunk(self, notes):
+        model_config = self.models["chunking"]
         model=self._get_model(model_config)
-        chunks=model.chunk(self.notes)
+        chunks=model.chunk(notes)
         return chunks
 
-    def embed(self, chunks):
+    def embed(self, notes):
         model_config = self.models["embeddings"]
         model=self._get_model(model_config)
         # this is a list of lists of tuples that is an index and list in the same order as the chunks which are in the
         # same order as the notes, each "chunk" instance is a list of strings
         embeddings=[]
-        for text in chunks:
+        for text in notes:
             text_embeddings=model.encode(text).tolist()
             embeddings.append([(index, item) for index, item in enumerate(text_embeddings)])
         # this will return a tensor of shape (n_chunks, embedding_dim) I need to split it
         # and make it something postgres compatible
         return embeddings
 
-    # This is static, I might add something like specify which steps but I am not sure that it's needed
-    def pipeline(self):
-        pass
 
     def _get_model(self, config):
         if config["type"] == "classification":
@@ -280,7 +376,7 @@ class Inference:
         return results
 
     #I've given up on llamacpp, gguf conversion is a mess, can't get it to work with cuda, I'm done.
-    def _run_llama(self, config):
+    def _run_llama(self, config, notes):
         model = self._get_model(config)
         messages = [
             {"role": "system", "content": prompt_dict["system"]},
@@ -288,21 +384,21 @@ class Inference:
         ]
 
         results = []
-        for note in self.notes:
+        for note in notes:
             messages[1]["content"] = prompt_dict[config["prompt_name"]] + note
             output = model.create_chat_completion(messages=messages)
             results.append(output["choices"][0]["message"]["content"])
 
         return results
 
-    def _run_causal(self, config):
+    def _run_causal(self, config, notes):
         model, tokenizer = self._get_model(config)
 
         stop_token_ids = tokenizer.encode(config["stop_token"], add_special_tokens=False)
         stopping_criteria = StoppingCriteriaList([StopOnSequence(stop_token_ids)])
 
         results=[]
-        for note in self.notes:
+        for note in notes:
             messages = [
                 {"role": "system", "content": prompt_dict["system"]},
                 {"role": "user", "content": prompt_dict[config["prompt_name"]] + note}]

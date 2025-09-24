@@ -91,6 +91,14 @@ inference:
       max_tokens: 30
       temperature: 1
       stop_token: "}"
+    ampm:
+      type: "causal"
+      model: "./models/ampm" # need to check this
+      prompt_name: "time"
+      truncation: true
+      max_tokens: 30
+      temperature: 1
+      stop_token: "}"
     date:
       type: "causal"
       model: "./models/date" # need to check this
@@ -116,7 +124,7 @@ inference:
       temperature: 1
       stop_token: "}"
     io:
-      type: "gguf"
+      type: "causal"
       model: "./models/io" # need to check this
       prompt_name: "io"
       truncation: true
@@ -124,7 +132,7 @@ inference:
       temperature: 1
       stop_token: "}"
     safety:
-      type: "gguf"
+      type: "causal"
       model: "./models/safety" # need to check this
       prompt_name: "safety"
       truncation: true
@@ -139,7 +147,7 @@ inference:
       max_tokens: 100
       temperature: 1
     sports:
-      type: "gguf"
+      type: "causal"
       model: "./models/sports" # need to check this
       prompt_name: "sports"
       truncation: true
@@ -173,6 +181,8 @@ inference:
 
   final_columns: ["CSN", "MRN", "Arrival Date", "Note Text", "probs", "summary", "cosine_similarity", "Diagnosis",
                "Problem List", "Chief Complaint"]
+
+  time_delta: 30 #days
 
 
 

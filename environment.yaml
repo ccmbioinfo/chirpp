@@ -6,9 +6,11 @@ channels:
   - conda-forge
 dependencies:
   - pip
+  - torch
   - python=3.10
   - postgresql
   - pip:
       - torch
+  - medspacy
 variables:
   PYTHONNOUSERSITE: '0'
