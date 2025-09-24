@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from sqlalchemy import MetaData, select, Table, Column, Integer, String, ForeignKey
+from sqlalchemy import MetaData, select, insert
 from sqlalchemy.orm import sessionmaker
 
 from chirpp.database import utils
@@ -34,14 +34,35 @@ class DataBase:
         self.csns = [item[0] for item in self.session.execute(csns).fetchall()]
 
 
-    def process_dump(self, epic_notes):
+    def process_raw(self, merged_notes, inference_notes):
         """
         take a PreProcess instance and from within the preprocess instance take preprocessed notes and get note sections
         then import the stuff to the database
         :param preprocess: PreProcess instance
         :return: None, things will be imported to the database
         """
-        #TODO this need to process the epic dump and put it in the database it's the first thing we need to do
+        patients, visits, referrals, problems, notes = utils.get_sections(merged_notes, inference_notes)
+        # filter for unique constraint
+        patients = patients[~patients["mrn"].isin(self.mrns)]
+        visits = visits[~visits["csn"].isin(self.csns)]
+        referrals = referrals[~referrals["csn"].isin(self.csns)]
+        problems = problems[~problems["csn"].isin(self.csns)]
+        notes = notes[~notes["csn"].isin(self.csns)]
+
+        #TODO this needs to be done in sqlaclehmy and should return the note ids for chunked notes
+        for mrn, dob in zip(patients["mrn"], patients["dob"]):
+            pat_ins=insert(self.tables["patients"].c.mrn, self.tables["patients"].dob).values(mrn, dob)
+            self.session.execute(pat_ins)
+            self.session.commit()
+
+        visits["csn"] = visits["csn"].astype(int)
+
+        visits.to_sql("visits", self.engine, if_exists="append", index=False)
+
+        referrals.to_sql("referrals", self.engine, if_exists="append", index=False)
+
+        problems.to_sql("problems", self.engine, if_exists="append", index=False)
+        notes.to_sql("notes", self.engine, if_exists="append", index=False)
         self.get_mrns()
         self.get_csns()
 
@@ -64,17 +85,18 @@ class DataBase:
 
         cases.to_sql("chirpp_report", self.engine, if_exists="append", index=False)
 
-    # This will be hardcoded because there needs to be a match between the embedding dict and the
-    # database table columns, using a json for a flexible solution defeats the purpose of pgvector
-    def import_processed_notes(self, inference_notes, chunker):
+
+    def import_processed_notes(self, inference_notes):
         """
         This imports the processed notes embeddings to the database, we are already creating this in the generate_report.py
         this is a dataframe that does not need to take any further processing
         :param inference_notes: inference notes databframe,
         :return:
         """
-        # this will put the notes after they have been processed by sectionremover
-        pass
+        inference_notes = inference_notes[["CSN", "processed_notes", "embeddings"]].rename(columns={"CSN": "csn",
+                                                                                                    "processed_notes": "note_text",
+                                                                                                    "embeddings": "embeddings"})
+        inference_notes.to_sql("processed_notes", self.engine, if_exists="append", index=False)
 
     def import_chunked_notes(self, merged_notes, chunker):
         # I need to implement a new embedding model not the model2vec, that one is good for chunking but not embeddings

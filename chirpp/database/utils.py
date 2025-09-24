@@ -3,6 +3,7 @@ from math import floor
 
 from chirpp.postprocess.utils import process_postal, scramble_mrn, process_ctas, process_sex
 
+#TODO this needs to be a param in config
 col_dict = {
     "CSN": "csn", "INJ DATE": "injury_date", "Hr": "injury_hour", "Min": "injury_min", "AM/PM": "am_pm",
     "I/O": "i_o", "LOCATION": "location", "AREA": "area", "PLACE": "place", "SK Narrative": "sk_narrative",
@@ -10,6 +11,12 @@ col_dict = {
     "BP2": "bp2", "BP3": "bp3", "IN": "intent", "DISP": "disp", "subID": "sub_id", "SPORTS CODE": "sports_code",
     "veh p": "veh_p", "Notes": "notes"
 }
+
+#TODO this needs to be a param in config
+narrative_note_types= [ 'ED Triage Notes', 'ED Provider Notes', 'PS Initial Consult', 'Consults',
+                'Consult Follow Up', 'Admission', 'Discharge Summary', 'Progress Notes',
+                'Assessment & Plan Note',  'ED Trauma Note', 'ED Trauma Notes',
+                'ED Procedure Note', 'Procedures','Op Note', 'Transfer In / Advice Note' ]
 
 
 def invert_dict(dict):
@@ -29,8 +36,8 @@ def calculate_age(arrival, dob):
 
 # right now I'm not changing the column names, I'm relying on the existing reports and they will remain constant and
 # the column names will not be changed for no good reason
-def get_sections(notes):
-    notes = notes[~pd.isna(notes["Note Text"])]
+def get_sections(merged_notes, inference_notes, narrative_note_types=narrative_note_types):
+    notes = merged_notes[~pd.isna(merged_notes["Note Text"])]
     patients = notes[["MRN", "Date of Birth"]].drop_duplicates()
     patients["Date of Birth"] = pd.to_datetime(patients["Date of Birth"])
 
@@ -48,6 +55,22 @@ def get_sections(notes):
     visits["age"] = ages
 
     visits["processed"] = False
+
+    for_narrative = merged_notes[merged_notes["Note Type"].isin(narrative_note_types)]
+    for_narrative["Note Type"] = pd.Categorical(for_narrative["Note Type"],
+                                                categories=narrative_note_types,)
+
+    for_narrative = for_narrative.sort_values(by="Note Type")
+
+    narrative = []
+    for note_type, note_text in zip(for_narrative["Note Type"].tolist(), for_narrative["Note Text"].tolist()):
+        if not pd.isna(note_text):
+            narrative.append(str(note_type) + "\n\n" + str(note_text))
+    narrative = "\n\n".join(narrative)
+
+    visits["sk_narrative"] = narrative
+
+    #TODO add day of the week, age, los, add probs
     visits = visits.rename(columns={"CSN": "csn", "Sex": "sex", "MRN": "mrn",
                                     "Arrival Date": "arrival_date",
                                     "Arrival Time": "arrival_time",
@@ -55,10 +78,9 @@ def get_sections(notes):
                                     "Chief Complaint": "chief_complaint",
                                     "Diagnosis": "diagnosis",
                                     "Disposition": "disposition",
-                                    "Referral Order": "referral_order",
                                     "CTAS": "ctas", "Address": "address", "City": "city", "Province": "province"})
     # this is arrived in error
-    visits = visits.drop(columns="Date of Birth")
+    visits = visits.drop(columns=["Date of Birth", "Referral Order"])
 
     referrals = notes[["CSN", "Referral Order"]].dropna().drop_duplicates()
     referrals = referrals.rename(columns={"CSN": "csn", "Referral Order": "referrals"})
