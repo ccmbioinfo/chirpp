@@ -1,8 +1,8 @@
 
 
-##### PRE PROCESS
+###### PREPROCESS ########
+
 pre_process:
-  #TODO this needs to be implemented as a param
   epic_dump_delim: "|"
   inference_sections: ["history_of_present_illness", "observation_and_plan", "chief_complaint", "problem_list", "diagnosis"]
   autofill_sections: ["history_of_present_illness", "chief_complaint", "problem_list", "diagnosis"]
@@ -46,9 +46,9 @@ pre_process:
   'dw': 'discussed with', 'RUQ': 'right upper quadrant', 'yo': 'year old', 'co': 'complaining of', 'bl': 'bilateral'}
 
 
-
 ###### INFERENCE ########
 inference:
+  n_threads: 10
   models:
     classification:
       type: "classification"
@@ -78,69 +78,73 @@ inference:
         5: 16
         6: 19
     summary:
-      type: "gguf"
-      model: "./models/summary.gguf" # need to check this
+      type: "causal"
+      model: "./models/summary" # need to check this
       prompt_name: "summary"
-      n_threads: 10
-      context_length: 4096
-      max_tokens: 100
+      max_tokens: 120
       temperature: 0.7
     time:
-      type: "gguf"
-      model: "./models/time.gguf" # need to check this
+      type: "causal"
+      model: "./models/time" # need to check this
       prompt_name: "time"
-      context_length: 4096
-      max_tokens: 100
-      temperature: 0.7
+      truncation: true
+      max_tokens: 30
+      temperature: 1
+      stop_token: "}"
     date:
-      type: "gguf"
-      model: "./models/date.gguf" # need to check this
+      type: "causal"
+      model: "./models/date" # need to check this
       prompt_name: "date"
-      context_length: 4096
-      max_tokens: 100
-      temperature: 0.7
+      truncation: true
+      max_tokens: 30
+      temperature: 1
+      stop_token: "}"
     location:
-      type: "gguf"
-      model: "./models/location.gguf" # need to check this
+      type: "causal"
+      model: "./models/location" # need to check this
       prompt_name: "location"
-      context_length: 4096
-      max_tokens: 100
-      temperature: 0.7
+      truncation: true
+      max_tokens: 30
+      temperature: 1
+      stop_token: "}"
     area:
-      type: "gguf"
-      model: "./models/area.gguf" # need to check this
+      type: "causal"
+      model: "./models/area" # need to check this
       prompt_name: "area"
-      context_length: 4096
-      max_tokens: 100
-      temperature: 0.7
+      truncation: true
+      max_tokens: 30
+      temperature: 1
+      stop_token: "}"
     io:
       type: "gguf"
-      model: "./models/io.gguf" # need to check this
+      model: "./models/io" # need to check this
       prompt_name: "io"
-      context_length: 4096
-      max_tokens: 100
-      temperature: 0.7
+      truncation: true
+      max_tokens: 30
+      temperature: 1
+      stop_token: "}"
     safety:
       type: "gguf"
-      model: "./models/safety.gguf" # need to check this
+      model: "./models/safety" # need to check this
       prompt_name: "safety"
-      context_length: 4096
-      max_tokens: 100
-      temperature: 0.7
+      truncation: true
+      max_tokens: 30
+      temperature: 1
+      stop_token: "}"
     substance:
-      type: "gguf"
-      model: "./models/substance.gguf" # need to check this
+      type: "causal"
+      model: "./models/substance" # need to check this
       prompt_name: "substance"
-      context_length: 4096
+      truncation: true
       max_tokens: 100
-      temperature: 0.7
+      temperature: 1
     sports:
       type: "gguf"
-      model: "./models/sports.gguf" # need to check this
+      model: "./models/sports" # need to check this
       prompt_name: "sports"
-      context_length: 4096
-      max_tokens: 100
-      temperature: 0.7
+      truncation: true
+      max_tokens: 10
+      temperature: 1
     chunking:
       type: "chunking"
       chunk_size: 128,
@@ -167,10 +171,7 @@ inference:
     "Isolated Chest Trauma - Penetrating", "Substance Withdrawal", "Electrical Injury", "Frostbite / Cold Injury",
     "Cardiac Arrest (Traumatic)", "Foreign Body in Eye" ]
 
- #TODO need to add pos_based on diagnosis
-
-
-  final_columns: ["MRN", "Arrival Date", "Note Text", "probs", "summary", "cosine_similarity", "Diagnosis",
+  final_columns: ["CSN", "MRN", "Arrival Date", "Note Text", "probs", "summary", "cosine_similarity", "Diagnosis",
                "Problem List", "Chief Complaint"]
 
 
@@ -180,12 +181,6 @@ post_process:
   cc_filter: ['depression / suicidal / deliberate self harm', 'ingestion', 'chemical', 'burn',
   'concern for patient wellfare', 'overdose ingestion', 'substance misuse / intoxication',
   'vomiting and/or nausea', 'behaviour', 'altered level Of consciousness']
-
-  diag_pl_filter: ['ingestion', 'poisoning', 'overdose', 'exposure', 'anxiety', 'substance',
-                   'intoxication', 'chemical', 'depression', 'suicidal','depressive', 'crisis',
-                   'instability', 'burn', 'self-harm', 'vomitting', 'irritation', 'suicide',
-                   'depressed', 'anorexia nervosa', 'caustic', 'corrosive']
-
 
   report_header: ["MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "INJ DATE", "Hr", "Min", "AM/PM",
   "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative", "W4P", "NO1", "BP1", "NO2", 
