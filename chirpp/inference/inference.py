@@ -1,11 +1,14 @@
+import re
+import json
 import pandas as pd
 import torch
 
 from transformers import (pipeline, AutoModelForSequenceClassification,
-                          AutoTokenizer)
+                          AutoTokenizer, AutoModelForCausalLM,
+                          StoppingCriteria, StoppingCriteriaList
+                          )
 
 from sentence_transformers import SentenceTransformer
-from llama_cpp import Llama
 from chonkie import SemanticChunker
 from chonkie import Model2VecEmbeddings
 
@@ -13,6 +16,18 @@ from chirpp.inference.prompts import prompt_dict
 
 class NoModelError(Exception):
     pass
+
+
+class StopOnSequence(StoppingCriteria):
+    def __init__(self, stop_sequence_ids):
+        self.stop_sequence_ids = stop_sequence_ids
+
+    def __call__(self, input_ids, scores, **kwargs):
+        # check if the last tokens match the stop sequence
+        if input_ids.shape[1] < len(self.stop_sequence_ids):
+            return False
+        return (input_ids[0, -len(self.stop_sequence_ids):].tolist()
+                == self.stop_sequence_ids)
 
 class SemanticChunking:
     def __init__(self, chunking_model, chunk_size=100, min_sentences=1,
@@ -62,7 +77,6 @@ class Inference:
         self.models=model_dict
         self.notes=notes
 
-    #TODO return tuple, 0/1 chirpp or not and the actual probs
     def classify(self):
         model_config=self.models["classification"]
         model=self._get_model(model_config)
@@ -72,11 +86,24 @@ class Inference:
 
 
     def summarize(self):
+        """
+        hacky llamacpp output parsing to get the summary, this has a lot more flexibility than the rest of the columns
+        because the output is just free text so it doesn't matter if there is a preceeiding or trailing space or anything like
+        that.
+        :return:
+        """
         model_config = self.models["summary"]
-        outputs=self._run_llama(model_config)
+        outputs=self._run_causal(model_config)
+        summaries=[]
+        for item in outputs:
+            try:
+                sm=json.loads(item)["summary"]
+            except:
+                sm=item.replace("{", "").replace("}", "").replace("summary", "").replace(":", "")
+            finally:
+                summaries.append(sm)
 
-        # TODO parse
-        return outputs
+        return summaries
 
     def intent(self):
         model_config = self.models["intent"]
@@ -86,64 +113,102 @@ class Inference:
         return results
 
     def substance(self):
+        """
+        parse the llamaccp output for the substance model, this is hacky because the llama outputs while mostly ok
+        are not 100% reliable to have correct formatting and sometimes quites are in different placets etc.
+        :return:
+        """
         model_config = self.models["substance"]
-        outputs = self._run_llama(model_config)
+        outputs = self._run_causal(model_config)
+        subs=[]
+        sub_ids=[]
+        for res in outputs:
+            subid=[item.lstrip() for item in
+             res.replace("}", "").replace("{", "").replace("and ", ",").replace("'", "").split("sub_id:")[
+                 1].lower().split(",") if len(item) > 1]
+            subid=list(set(subid))
+            if len(subid)>1:
+                subs.append(1)
+                sub_ids.append(sub_ids)
+            else:
+                subs.append(2)
+                sub_ids.append(None)
 
-        # TODO parse
-        return outputs
+        return subs, sub_ids
+
+
+    def safety(self):
+        model_config = self.models["safety"]
+        outputs = self._run_causal(model_config)
+        sd1=[]
+        sd2=[]
+        sd3=[]
+        sd4=[]
+        sd5=[]
+        for item in outputs:
+            try:
+                item=json.loads(item["pred"].tolist()[0].replace("'", '"'))
+                sd1.append(item["sd1"])
+                sd2.append(item["sd2"])
+                sd3.append(item["sd3"])
+                sd4.append(item["sd4"])
+                sd5.append(item["sd5"])
+            except:
+                item=re.sub(r"\'sd[0-9]\':", "", item).replace("}", "").\
+                    replace("{", "").replace(" ", "").replace("'", "").split(",")
+                sd1.append(item[0])
+                sd2.append(item[1])
+                sd3.append(item[2])
+                sd4.append(item[3])
+                sd5.append(item[4])
+
+        return sd1, sd2, sd3, sd4, sd5
 
     def io(self):
         model_config = self.models["io"]
-        outputs = self._run_llama(model_config)
+        outputs = self._run_causal(model_config)
 
         # TODO parse
         return outputs
 
     def time(self):
         model_config = self.models["time"]
-        outputs = self._run_llama(model_config)
+        outputs = self._run_causal(model_config)
 
         # TODO parse
         return outputs
 
     def date(self):
         model_config = self.models["date"]
-        outputs = self._run_llama(model_config)
+        outputs = self._run_causal(model_config)
 
         # TODO parse
         return outputs
 
     def ampm(self):
         model_config = self.models["ampm"]
-        outputs = self._run_llama(model_config)
+        outputs = self._run_causal(model_config)
 
         # TODO parse
         return outputs
 
     def area(self):
         model_config = self.models["area"]
-        outputs = self._run_llama(model_config)
-
-        # TODO parse
-        return outputs
-
-    def safety(self):
-        model_config = self.models["safety"]
-        outputs = self._run_llama(model_config)
+        outputs = self._run_causal(model_config)
 
         # TODO parse
         return outputs
 
     def location(self):
         model_config = self.models["location"]
-        outputs = self._run_llama(model_config)
+        outputs = self._run_causal(model_config)
 
         # TODO parse
         return outputs
 
     def sports(self):
         model_config = self.models["sports"]
-        outputs = self._run_llama(model_config)
+        outputs = self._run_causal(model_config)
 
         # TODO parse
         return outputs
@@ -154,21 +219,20 @@ class Inference:
         chunks=model.chunk(self.notes)
         return chunks
 
-    #TODO
     def embed(self, chunks):
         model_config = self.models["embeddings"]
         model=self._get_model(model_config)
-        # this is a list of lists of ndarrays in the same order as the chunks which are in the
-        # same order as the notes
+        # this is a list of lists of tuples that is an index and list in the same order as the chunks which are in the
+        # same order as the notes, each "chunk" instance is a list of strings
         embeddings=[]
         for text in chunks:
-            text_embeddings=model.encode(text, convert_to_tensor=False)
-            embeddings.append(text_embeddings)
+            text_embeddings=model.encode(text).tolist()
+            embeddings.append([(index, item) for index, item in enumerate(text_embeddings)])
         # this will return a tensor of shape (n_chunks, embedding_dim) I need to split it
         # and make it something postgres compatible
         return embeddings
 
-    # This is fixed, I might add something like specify which steps but I am not sure that it's needed
+    # This is static, I might add something like specify which steps but I am not sure that it's needed
     def pipeline(self):
         pass
 
@@ -179,9 +243,11 @@ class Inference:
             t = AutoTokenizer.from_pretrained(config["model_dir"], padding=config["max_length"],
                                                       truncation=config["truncation"])
             model = pipeline("text-classification", model=m, tokenizer=t, device=self.device)
-        elif config["type"] == "gguf":
-            model=Llama(model_path=config["model_dir"], n_ctx=4096, n_gpu_layers=0,
-                        n_threads=config["n_threads"])
+        elif config["type"] == "causal":
+            m=AutoModelForCausalLM.from_pretrained(config["model_dir"], device_map="auto")
+            t=AutoTokenizer.from_pretrained(config["model_dir"], padding=config["max_length"],
+                                            truncation=config["truncation"])
+            model = (m, t)
         elif config["type"] == "chunking":
             model=SemanticChunking(chunking_model=config["model"],
                                    chunk_size=config["chunk_size"],
@@ -213,6 +279,7 @@ class Inference:
                 results.append(None)
         return results
 
+    #I've given up on llamacpp, gguf conversion is a mess, can't get it to work with cuda, I'm done.
     def _run_llama(self, config):
         model = self._get_model(config)
         messages = [
@@ -228,19 +295,41 @@ class Inference:
 
         return results
 
-    def _get_probs(self, database, start_date, complaint_filter):
-        """
-        Get the minimum probability of a visit based on chief complaints and start date.
-        :param database:
-        :param start_date:
-        :param complaint_filter:
-        :return:
-        """
-        probs = pd.read_sql(
-            f"select min(probs) from visits where chief_complaint in {','.join(complaint_filter)} and arrival_date >= '{start_date}'",
-            con=database.engine)
+    def _run_causal(self, config):
+        model, tokenizer = self._get_model(config)
 
-        return probs[0]
+        stop_token_ids = tokenizer.encode(config["stop_token"], add_special_tokens=False)
+        stopping_criteria = StoppingCriteriaList([StopOnSequence(stop_token_ids)])
+
+        results=[]
+        for note in self.notes:
+            messages = [
+                {"role": "system", "content": prompt_dict["system"]},
+                {"role": "user", "content": prompt_dict[config["prompt_name"]] + note}]
+
+            text = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
+
+            generated_ids = model.generate(
+                **model_inputs,
+                max_new_tokens=config["max_tokens"],
+                do_sample=True,
+                temperature=config["temperature"],
+                eos_token_id=tokenizer.eos_token_id,
+                stopping_criteria = stopping_criteria
+            )
+            output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
+            content = tokenizer.decode(output_ids, skip_special_tokens=True)
+            results.append(content)
+
+        return results
+
+
+
 
 
 

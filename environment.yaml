@@ -1,0 +1,14 @@
+name: chirpp_gpu
+channels:
+  - pytorch
+  - nvidia
+  - defaults
+  - conda-forge
+dependencies:
+  - pip
+  - python=3.10
+  - postgresql
+  - pip:
+      - torch
+variables:
+  PYTHONNOUSERSITE: '0'

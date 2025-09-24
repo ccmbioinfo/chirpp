@@ -8,7 +8,9 @@ chonkie[all]
 model2vec
 pgvector
 transformers
+sentence-transformers
 spacy
 medspacy
 spacy-transformers
 openpyxl
+accelerate
