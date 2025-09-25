@@ -37,6 +37,11 @@ def get_probs(database, end_date, complaint_filter, time_delta=30):
 
 
 class StopOnSequence(StoppingCriteria):
+    """
+    Simple huggingface stopping criteria, the causal models are "supposed to" retun jsons but they never really
+    do so I have to force them to terminate after seeing a "}" even that is sometimes not enough so I would need to
+    do some string parsing as well.
+    """
     def __init__(self, stop_sequence_ids):
         self.stop_sequence_ids = stop_sequence_ids
 
@@ -51,12 +56,11 @@ class SemanticChunking:
     def __init__(self, chunking_model, chunk_size=100, min_sentences=1,
                  threshold=0.8):
         """
-
-        :param chunking_model:
-        :param chunk_size:
-        :param min_sentences:
-        :param threshold:
-        :param text_embedding_kwargs
+        :param chunking_model: chunking model it can be anything really but we are using a static model for speed
+        :param chunk_size: how many tokens approx a chunk should have
+        :param min_sentences: how many sentences a chunk should have at the minimum. It did not makes sense to me to split sentences so we are
+        sticking with 1
+        :param threshold: when to start a new chunk, this is based on the delta for the embedding cosines.
         """
         self.chunking_model = Model2VecEmbeddings(chunking_model)
         self.chunk_size=chunk_size
@@ -64,7 +68,7 @@ class SemanticChunking:
         self.threshold=threshold
 
     def chunk_notes(self, notes):
-        """Chunk notes into semantic segments."""
+        """Chunk notes into semantic segments. this will return a list of strings, i will then use an embedding model"""
         chunker = SemanticChunker(
             embedding_model=self.chunking_model,
             threshold=self.threshold,  # Similarity threshold (0-1) or (1-100) or "auto"
@@ -123,6 +127,12 @@ class Inference:
         return summaries
 
     def intent(self, notes):
+        """
+        use pre-trained encoder model to predict intent, currently partner abuse is not included in the list because over
+        the course of the years there has been only one case.
+        :param notes: notes
+        :return: return the chirpp codes for each case
+        """
         model_config = self.models["intent"]
         model = self._get_model(model_config)
         intents = model(notes, model_config["labels"])
@@ -154,8 +164,12 @@ class Inference:
                 sub_ids.append(i)
         return subs, sub_ids
 
-    #TODO this is a little heavy handed I should be able to extract more gracefully
     def safety(self, notes):
+        """
+        for all the causal models the idea is the same, take whatever the model is giving and do some string parsing
+        if the parsing fails return none, there are some special cases where the model says I do not know and those are also
+        replaced with None
+        """
         model_config = self.models["safety"]
         outputs = self._run_causal(model_config, notes)
         sd1=[]
@@ -333,6 +347,12 @@ class Inference:
 
 
     def _get_model(self, config):
+        """
+        just a wrapper around different model types that are specified in the config, to reduce duplicated code
+        :param config: model config see config.yaml
+        :return: some sort of a or a couple of callables to be called either by the modality method (classify, intent), or
+        by _run_llama or _run_causal
+        """
         if config["type"] == "classification":
             m = AutoModelForSequenceClassification.from_pretrained(config["model_dir"],
                                                                    config["num_labels"])
@@ -351,6 +371,13 @@ class Inference:
                                    threshold=config["threshold"])
         elif config["type"] == "embeddings":
             model=SentenceTransformer(config["model_dir"])
+        elif config["type"]=="gguf":
+            # I'm not importing anything this has been a nightmare to set up and it's still not reliable especially
+            # with cuda I'm leaving this here for completeness sake but I will not be using it.
+            from llama_cpp import Llama
+            model = Llama(model_path=config["model_dir"], n_ctx=4096, n_gpu_layers=0, n_threads=config["n_threads"])
+        else:
+            raise NotImplementedError(f"The model type {config['type']} is not implemented")
 
         return model
 
