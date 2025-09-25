@@ -23,6 +23,8 @@ parser = arg.ArgumentParser(description='Preprocess notes file for inference')
 parser.add_argument('-n', '--notes', type=str, help='Path to raw patient notes')
 parser.add_argument('-c', '--config', type=str, help='config file in yaml format', default="config.yaml",
                     action="store")
+parser.add_argument('--excel_report', help='create an excel report', action="store_true")
+parser.add_argument('--report_path', type=str, help='path to save the excel report', default=None, action="store")
 parser.add_argument('--env_file', help='env_file that contains the information about db connection', action="store")
 args = parser.parse_args()
 
@@ -78,7 +80,11 @@ print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Running infer
 inference_config=config["inference"]
 inference=Inference(inference_config, device=device)
 
-# this is the inference pipeline just going throught the columns one by one
+# this is the inference pipeline just going throught the columns one by one I thought about doing this as a method
+# in the inferenc class but I will need to pass the cutoff and the number of notes that will need to run for different methods
+# are different so it will need addional arguments and that will make it more complicated. The code here I think is very
+# readable and easy to follow just not very DRY
+
 cutoff=get_probs(database, merged_notes["Arrival Date"].min(), #get the previous montth
                  inference_config["pos_complaints"], time_delta=inference_config["time_delta"])
 
@@ -88,28 +94,42 @@ processed_notes["probs"]=inference.classify(processed_notes["processed_notes"])
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing notes")
 processed_notes["summary"]=inference.summarize(processed_notes["processed_notes"])
+processed_notes["summary_embeddings"]=inference.embed(processed_notes["summaries"])
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Calculating embeddings for semantic search")
-processed_notes["embeddings"]=inference.embed(processed_notes["processed_notes"])
+processed_notes["processed_embeddings"]=inference.embed(processed_notes["processed_notes"])
 
 
 # fill in columns because only chirpp cases will be inferred
 processed_notes["intent"]=None
-processed_notes["subs"]=None
-processed_notes["sub_ids"]=None
-processed_notes["io"]=None
+processed_notes["sub"]=None
+processed_notes["sub_id"]=None
+processed_notes["i_o"]=None
 processed_notes["location"]=None
 processed_notes["area"]=None
-processed_notes["date"]=None
-processed_notes["hr"]=None
-processed_notes["min"]=None
-processed_notes["ampm"]=None
-processed_notes["sports"]=None
+processed_notes["injury_date"]=None
+processed_notes["injury_hour"]=None
+processed_notes["injury_min"]=None
+processed_notes["am_pm"]=None
+processed_notes["sports_code"]=None
 processed_notes["sd1"]=None
 processed_notes["sd2"]=None
 processed_notes["sd3"]=None
 processed_notes["sd4"]=None
 processed_notes["sd5"]=None
+
+#these are columns that we are not filling in during inference, some will be part of postprocessing
+processed_notes["veh"]=None
+processed_notes["veh_p"]=None
+processed_notes["place"]=None
+processed_notes["w4p"]=0
+processed_notes["no1"]=None
+processed_notes["bp1"]=None
+processed_notes["no2"]=None
+processed_notes["bp2"]=None
+processed_notes["no3"]=None
+processed_notes["bp3"]=None
+processed_notes["disp"]=None
 
 # determine which notes are chirpp
 processed_notes["is_chirpp"]=processed_notes["probs"]>=cutoff
@@ -160,14 +180,26 @@ processed_notes["sd3"][processed_notes["is_chirpp"]]=sd3
 processed_notes["sd4"][processed_notes["is_chirpp"]]=sd4
 processed_notes["sd5"][processed_notes["is_chirpp"]]=sd5
 
-# the order of the notes in the merged notes should be the same as when they are dumped in the db
-for note in merged_notes["Note Text"]:
-    chunks=inference.chunk(note)
-    chunk_embeddings=inference.embed(chunks)
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Post Processing Notes")
 
 #### POSTPROCESSING #####
-# TODO
+postprocess=PostProcess(merged_notes, processed_notes, config["post_process"])
+patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases = postprocess.process(inference)
+
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Exporting to database")
 
 #### ADD TO DATABASE #####
+database.to_db(patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases)
+
+#### Generate Report for legacy support #####
+if args.excel_report and args.report_path is not None:
+    print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating excel report")
+    sheet1, sheet2 = database.get_report(start=merged_notes["arrival_date"].min(),
+                        end=merged_notes["arrival_date"].max())
+
+    with pd.ExcelWriter(args.report_path) as out:
+        sheet1.to_excel(out, sheet_name="Sheet 1", index=False)
+        sheet2.to_excel(out, sheet_name="Sheet 2", index=False)
+
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Done!")

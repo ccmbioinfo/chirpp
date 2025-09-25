@@ -1,9 +1,8 @@
 import uuid
 
 from sqlalchemy import (
-    Column, ForeignKey, Integer, String, DateTime,
-    Date, Text, Float, Time, types, Computed, Index, Boolean,
-    JSON
+    Column, ForeignKey, Integer, String,
+    Date, Text, Float, Time, types, Computed, Index
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import declarative_base
@@ -35,6 +34,7 @@ class Visits(Base):
     arrival_time = Column(Time)
     day_of_week = Column(String)
     sk_narrative=Column(Text)
+    notes=Column(Text)
     postal_code = Column(String)
     chief_complaint = Column(String, index=True)
     diagnosis = Column(String, index=True)
@@ -48,22 +48,28 @@ class Visits(Base):
     sk_narrative_vector = Column(TSVector(), Computed(
         "to_tsvector('english', sk_narrative)",
         persisted=True))
+    notes_vector = Column(TSVector(), Computed(
+        "to_tsvector('english', notes)",
+        persisted=True))
 
     __table_args__ = (Index('ix_sk_narrative_ts_vector',
                             sk_narrative_vector, postgresql_using='gin'),
-
+                      Index('ix_visits_notes_ts_vector',
+                            notes_vector, postgresql_using='gin'),
                       )
 
-# these are the visit summaries, all cases will be summarized by AI and some
-# some (the ones that are actual cases (see chirrp_report table) might have their summaries
-# updated
+
+# these are summaries of a visits, not all the summaries are used in chirpp but they are all summarized in case
+# a presentation is missed by the classifier model and we want to add it later.
+# of the chirpp cases some summaries might get updated so we will need a version column, when the summary is updated
+# we will need to update the embeddings as well.
 class Summaries(Base):
     __tablename__ = "summaries"
     id = Column(Integer, primary_key=True)
     csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     phac_narrative = Column(String)
     phac_embeddings = Column(Vector(1024))
-    version = Column(Integer, nullable=False, default=1)
+    version = Column(Integer, nullable=False)
     phac_narrative_vector = Column(TSVector(), Computed(
         "to_tsvector('english', phac_narrative)",
         persisted=True))
@@ -72,11 +78,6 @@ class Summaries(Base):
         Index('ix_phac_narrative_ts_vector',
               phac_narrative_vector, postgresql_using='gin'),
         )
-
-    __mapper_args__ = {
-        "version_id_col": version,
-        "version_id_generator": lambda version: version + 1
-    }
 
 
 # same as above
@@ -93,10 +94,12 @@ class Problems(Base):
     csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     problem = Column(String)
 
-# same as above
+# this is the only table that uses uuid because it is the only table that has another table that foreign keys to it
+# I can use .returning to get the ids but that is an extra step and not needed, we do not care about orders and we will
+# only be using the id to pull things from the chunked notes table
 class Notes(Base):
     __tablename__ = "notes"
-    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     note_type = Column(String, index=True)
     author_type = Column(String, index=True)
@@ -115,21 +118,22 @@ class Notes(Base):
 class ChunkedNotes(Base):
     __tablename__ = "chunked_notes"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    note_id = Column(Integer, ForeignKey("notes.id"), index=True)
+    note_id = Column(UUID(as_uuid=True), ForeignKey("notes.id"), index=True)
     chunk_number = Column(Integer)
     chunk_text = Column(Text)
     embeddings=Column(Vector(1024))
 
 # this may change but unlikely, the "processed notes are just the regular notes where we remove things that we do not care
-# about such as vitals and vaccinations etc.
+# about such as vitals and vaccinations etc. while they are used extensively by all the models the chirpp team do not use
+# them directly, so they will stay as is most likely
 class ProcessedNotes(Base):
     __tablename__="processed_notes"
     id=Column(Integer, autoincrement=True, primary_key=True, index=True)
     csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     note_text=Column(Text)
-    note_text_ts_vector=Column(TSVector(), Computed("to_tsvector('english', note_text)",
-                               persisted=True))
     embeddings=Column(Vector(1024))
+    note_text_ts_vector = Column(TSVector(), Computed("to_tsvector('english', note_text)",
+                                                      persisted=True))
     __table_args__ = (Index('ix_note_text_ts_vector',
                             note_text_ts_vector, postgresql_using='gin'), )
 
@@ -169,14 +173,7 @@ class Cases(Base):
     sd5 = Column(Integer)
     sports_code = Column(Integer)
     version = Column(Integer, nullable=False, default=1)
-    __mapper_args__ = {
-        "version_id_col": version,
-        "version_id_generator": lambda version: version + 1
-    }
 
-
-
-    # this is the sections removed notes these are used for inference for the most part
 
 # If you look at the other branches you will see that there were more tables that were reserved for auth because
 # I was planning on writing the whole ui myself. So I have removed those tables and leave it up to you

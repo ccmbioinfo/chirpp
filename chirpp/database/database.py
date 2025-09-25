@@ -33,74 +33,74 @@ class DataBase:
         csns = select(self.tables["visits"].c.csn)
         self.csns = [item[0] for item in self.session.execute(csns).fetchall()]
 
-
-    def process_raw(self, merged_notes, inference_notes):
+    def to_db(self, patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases):
         """
-        take a PreProcess instance and from within the preprocess instance take preprocessed notes and get note sections
-        then import the stuff to the database
-        :param preprocess: PreProcess instance
-        :return: None, things will be imported to the database
+        add data to the database
+        :param patients: a pandas dataframe of patients
+        :param visits: a pandas dataframe of visits
+        :param referrals: a pandas dataframe of referrals
+        :param problems: a pandas dataframe of problems
+        :param notes_df: a pandas dataframe of notes
+        :param chunked_notes: a pandas dataframe of chunked notes
+        :param summaries: a pandas dataframe of summaries
+        :param processed_notes: a pandas dataframe of processed notes
+        :param cases: a pandas dataframe of cases
+        :return: None or an error message
         """
-        patients, visits, referrals, problems, notes = utils.get_sections(merged_notes, inference_notes)
-        # filter for unique constraint
-        patients = patients[~patients["mrn"].isin(self.mrns)]
-        visits = visits[~visits["csn"].isin(self.csns)]
-        referrals = referrals[~referrals["csn"].isin(self.csns)]
-        problems = problems[~problems["csn"].isin(self.csns)]
-        notes = notes[~notes["csn"].isin(self.csns)]
-
-        #TODO this needs to be done in sqlaclehmy and should return the note ids for chunked notes
-        for mrn, dob in zip(patients["mrn"], patients["dob"]):
-            pat_ins=insert(self.tables["patients"].c.mrn, self.tables["patients"].dob).values(mrn, dob)
-            self.session.execute(pat_ins)
-            self.session.commit()
-
-        visits["csn"] = visits["csn"].astype(int)
-
-        visits.to_sql("visits", self.engine, if_exists="append", index=False)
-
-        referrals.to_sql("referrals", self.engine, if_exists="append", index=False)
-
-        problems.to_sql("problems", self.engine, if_exists="append", index=False)
-        notes.to_sql("notes", self.engine, if_exists="append", index=False)
-        self.get_mrns()
-        self.get_csns()
-
-    def process_report(self, cases, col_dict=utils.col_dict):
-        """
-        take a postprocess instance and add to the database, we are only adding the sheet 2
-        :param postprocess: chirpp.postprocess.postprocess.Postprocess instance
-        :return: None, things will be imported to the database
-        """
-        csns = select(self.tables["chirpp_report"].c.csn)
-        csns = [item[0] for item in self.session.execute(csns).fetchall()]
-
-        cases = cases.rename(columns=col_dict)
-        cases = cases[~cases["csn"].isin(csns)]
-
-        cases = cases[["csn", "injury_date", "injury_hour", "injury_min", "am_pm", "i_o", "location", "area",
-                       "place", "phac_narrative", "w4p", "no1", "no2", 'no3', 'bp1', 'bp2', 'bp3', 'notes', 'sub',
-                       'sub_id', 'sports_code', 'disp', 'intent', 'veh', 'veh_p', 'sd1', 'sd2', 'sd3', 'sd4', 'sd5',
-                       'sk_narrative']]
-
-        cases.to_sql("chirpp_report", self.engine, if_exists="append", index=False)
+        patients_table = self.tables["patients"]
+        visits_table = self.tables["visits"]
+        referrals_table = self.tables["referrals"]
+        problems_table = self.tables["problems"]
+        notes_table = self.tables["notes"]
+        chunked_notes_table = self.tables["chunked_notes"]
+        summaries_table = self.tables["summaries"]
+        processed_notes_table = self.tables["processed_notes"]
+        cases_table = self.tables["chirpp_report"]
 
 
-    def import_processed_notes(self, inference_notes):
-        """
-        This imports the processed notes embeddings to the database, we are already creating this in the generate_report.py
-        this is a dataframe that does not need to take any further processing
-        :param inference_notes: inference notes databframe,
-        :return:
-        """
-        inference_notes = inference_notes[["CSN", "processed_notes", "embeddings"]].rename(columns={"CSN": "csn",
-                                                                                                    "processed_notes": "note_text",
-                                                                                                    "embeddings": "embeddings"})
-        inference_notes.to_sql("processed_notes", self.engine, if_exists="append", index=False)
+        with self.engine.begin() as conn:
+            # patients
+            new_patients = patients[~patients["mrn"].isin(self.mrns)]
+            if not new_patients.empty:
+                conn.execute(insert(patients_table), new_patients.to_dict(orient="records"))
+                self.get_mrns()
 
-    def import_chunked_notes(self, merged_notes, chunker):
-        # I need to implement a new embedding model not the model2vec, that one is good for chunking but not embeddings
-        pass
+            # visits
+            new_visits = visits[~visits["csn"].isin(self.csns)]
+            if not new_visits.empty:
+                conn.execute(insert(visits_table), new_visits.to_dict(orient="records"))
+                self.get_csns()
+
+            # referrals
+            if not referrals.empty:
+                conn.execute(insert(referrals_table), referrals.to_dict(orient="records"))
+
+            # problems
+            if not problems.empty:
+                conn.execute(insert(problems_table), problems.to_dict(orient="records"))
+
+            # notes
+            if not notes_df.empty:
+                conn.execute(insert(notes_table), notes_df.to_dict(orient="records"))
+
+            # chunked notes
+            if not chunked_notes.empty:
+                conn.execute(insert(chunked_notes_table), chunked_notes.to_dict(orient="records"))
+
+            # summaries
+            if not summaries.empty:
+                conn.execute(insert(summaries_table), summaries.to_dict(orient="records"))
+
+            # processed notes
+            if not processed_notes.empty:
+                conn.execute(insert(processed_notes_table), processed_notes.to_dict(orient="records"))
+
+            # cases
+            if not cases.empty:
+                conn.execute(insert(cases_table), cases.to_dict(orient="records"))
+
+        conn.close()
+        return None
 
     # use this to pass a set of raw reports, this will be a bunch of joins
     # I need to select Triage and ED Provider notes from the database and pass it ot generate report
@@ -148,6 +148,7 @@ class DataBase:
                          "arrival_time", "los", "chief_complaint", "problem_list", "diagnosis",
                          "ctas", "referrals", "note_type", "author_type", "author_service",
                          "note_text", 'address', 'city', 'province', 'disposition', 'ctas', ]]
+
         visits = visits.rename(columns={
             "csn": "CSN", "mrn": 'MRN', 'sex': 'Sex', 'dob': 'Date of Birth', 'age': 'Age (Years)',
             'arrival_date': 'Arrival Date', 'arrival_time': 'Arrival Time', 'address': 'Address',
@@ -171,7 +172,8 @@ class DataBase:
 
         return visits
 
-    # TODO get appropriate columns, process postal and scramble mrn add sheet1 and sheet2
+    # TODO get appropriate columns, process postal and scramble mrn add sheet1 and sheet2 and make sure the
+    # the versions are the latest one also need to add the previous visits column
     def get_report(self, start, end):
         """
         generate a report from the database
@@ -222,15 +224,9 @@ class DataBase:
         :param excel_file:
         :return:
         """
-        data = pd.read_excel(excel_file, sheet_name=1)[list(col_dict.keys)].rename(columns=col_dict)
-        visits_table = self.tables["visits"]
-        csns = data["csn"].to_list()
-        case_values = data.drop(columns="csn").to_dict(orient="records")
-        for case, values in zip(csns, case_values):
-            statement = visits_table.update().where(visits_table.c.csn == case).values(values)
-            self.session.execute(statement)
-            self.session.commit()
+        pass
 
+    #TODO I need to have a date selection I cannot get visits from the future
     def previous_visits(self, merged_notes):
         """
         get previous visits for a patient
