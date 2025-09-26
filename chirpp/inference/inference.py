@@ -2,6 +2,7 @@ import re
 import json
 import pandas as pd
 import torch
+from spacy.lang.fi.tokenizer_exceptions import suffix
 
 from transformers import (pipeline, AutoModelForSequenceClassification,
                           AutoTokenizer, AutoModelForCausalLM,
@@ -325,6 +326,70 @@ class Inference:
             finally:
                 sports.append(s)
         return sports
+
+    def rerank(self, query, notes):
+        """
+        This looks complicated but I'm just following the hugginface instructions for the qwen model. The main issue here
+        is that if we were to change the model this function needs to be changed as well. The other option is to add this to
+        utils and then call it here, but that doest not change the fact that there needs to be a new rerank function for each model
+        :param query: the nlp query that we are looking for
+        :param notes: notes
+        :return: list of floats 1<=x<=0 relevance score for each note
+        """
+        model_config= self.models["rerank"]
+        model=self._get_model(model_config)
+        tokenizer=model[1]
+        model=model[0]
+
+        tokenizer.padding_side = "left"
+
+        prefix = (
+            "<|im_start|>system\n"
+            "Judge whether the Document meets the requirements based on the Query and the Instruct provided. "
+            "Note that the answer can only be \"yes\" or \"no\".<|im_end|>\n"
+            "<|im_start|>user\n"
+        )
+        suffix = (
+            "<|im_end|>\n"
+            "<|im_start|>assistant\n"
+            "<think>\n\n</think>\n\n"
+        )
+
+        prefix_tokens = tokenizer.encode(prefix, add_special_tokens=False)
+        suffix_tokens = tokenizer.encode(suffix, add_special_tokens=False)
+
+        token_id_yes = tokenizer.convert_tokens_to_ids("yes")
+        token_id_no = tokenizer.convert_tokens_to_ids("no")
+
+        relevance=[]
+        for note in notes:
+            prompt= prompt_dict["rerank"].format(query=query, context=note)
+            inputs = tokenizer(
+                prompt,
+                truncation="longest_first",
+                max_length=8192 - len(prefix_tokens) - len(suffix_tokens),
+                add_special_tokens=False,
+            )
+            input_ids = [prefix_tokens + inputs["input_ids"] + self.suffix_tokens]
+            attention_mask = [[1] * len(input_ids[0])]
+            batch = {
+                "input_ids": torch.tensor(input_ids, dtype=torch.long, device=self.device),
+                "attention_mask": torch.tensor(attention_mask, dtype=torch.long, device=self.device),
+            }
+
+            with torch.no_grad():
+                outputs = model(**batch)
+                logits = outputs.logits  # (1, L, V)
+                last_logits = logits[:, -1, :]  # (1, V)
+                score_no = last_logits[0, token_id_no]
+                score_yes = last_logits[0, token_id_yes]
+                # Compute softmax over the two (no, yes)
+                two_logits = torch.stack([score_no, score_yes], dim=0)  # shape (2,)
+                probs = torch.softmax(two_logits, dim=0)  # (2,)
+                prob_yes = probs[1].item()
+                relevance.append(prob_yes)
+
+        return relevance
 
     def chunk(self, notes):
         model_config = self.models["chunking"]
