@@ -153,6 +153,11 @@ inference:
       truncation: true
       max_tokens: 10
       temperature: 1
+    rerank:
+      type: "cause"
+      prompt_name: "rerank"
+      truncation: true
+      model: "./models/rerank"
     chunking:
       type: "chunking"
       chunk_size: 128,
