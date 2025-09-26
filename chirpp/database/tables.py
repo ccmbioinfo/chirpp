@@ -19,7 +19,8 @@ Base = declarative_base()
 # sex is not included here because I've seem some notes change even though it should not. there is no gender field
 class Patients(Base):
     __tablename__ = "patients"
-    mrn = Column(Integer, index=True, primary_key=True)  # this is mrn
+    mrn = Column(Integer, index=True, primary_key=True)
+    scr_mrn=Column(Integer, index=True)
     dob = Column(Date)
 
 
@@ -159,7 +160,6 @@ class Cases(Base):
     bp2 = Column(Integer)
     no3 = Column(Integer)
     bp3 = Column(Integer)
-    notes = Column(Text)
     disp = Column(Integer)
     intent = Column(Integer, index=True)
     veh = Column(Integer)
