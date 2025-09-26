@@ -197,6 +197,8 @@ if args.excel_report and args.report_path is not None:
     sheet1, sheet2 = database.get_report(start=merged_notes["arrival_date"].min(),
                         end=merged_notes["arrival_date"].max())
 
+    #TODO add previous visist to sheet 2
+
     with pd.ExcelWriter(args.report_path) as out:
         sheet1.to_excel(out, sheet_name="Sheet 1", index=False)
         sheet2.to_excel(out, sheet_name="Sheet 2", index=False)

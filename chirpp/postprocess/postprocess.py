@@ -40,5 +40,5 @@ class PostProcess:
         return patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases
 
     #TODO as part of generate report for legacy support
-    def create_excel_report(self):
-        pass
+
+
