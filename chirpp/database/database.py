@@ -5,6 +5,7 @@ import pandas as pd
 from sqlalchemy import MetaData, select, insert
 from sqlalchemy.orm import sessionmaker
 
+from chirpp.postprocess.utils import process_postal
 
 
 # a lot of the methods rely on other functions returning errors, in this instance I think it makes sense because most of
@@ -19,7 +20,8 @@ class DataBase:
         self.engine = engine
         self.meta = MetaData(bind=self.engine)
         self.meta.reflect(bind=self.engine)
-        self.session = sessionmaker(self.engine)
+        session = sessionmaker(self.engine)
+        self.session=session()
         self.tables = self.meta.tables
         self.get_mrns()
         self.get_csns()
@@ -217,6 +219,7 @@ class DataBase:
     def update_raw(self, txt_file):
         pass
 
+    # TODO this is not implemented yet, I need to figure out versioning
     def update_report(self, excel_file, col_dict):
         """
         here the assumption is that the sheet 2 is always the cases, and it is always the second sheet.
@@ -287,7 +290,7 @@ class DataBase:
         # this can probably be a loop and a dict but still hard coded so will leave it for now
 
         report_df = pd.DataFrame(columns=header)
-        report_df["POSTAL"] = merged["postal_code"]
+        report_df["POSTAL"] = merged["postal_code"].apply(process_postal)
         report_df["SEX"] = merged["sex"]
         report_df["MRN"] = merged["mrn"]
         report_df["CSN"] = merged["csn"]

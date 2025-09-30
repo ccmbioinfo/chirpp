@@ -453,7 +453,7 @@ def get_visits(inference_notes, processed_notes, note_types):
     visits["sk_narrative"] = narrative
 
     # some touchups requested by the chirpp team
-    visits["Postal Code"]=visits["Postal Code"].apply(process_postal)
+
     visits["Sex"]=visits["Sex"].apply(process_sex)
     visits["CTAS"]=visits["CTAS"].apply(process_ctas)
     visits["notes"]=get_visit_notes(inference_notes)

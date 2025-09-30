@@ -16,7 +16,7 @@ class TSVector(types.TypeDecorator):
 
 Base = declarative_base()
 
-# sex is not included here because I've seem some notes change even though it should not. there is no gender field
+# sex is not included here because I've seen some notes change even though it should not. there is no gender field
 class Patients(Base):
     __tablename__ = "patients"
     mrn = Column(Integer, index=True, primary_key=True)
@@ -124,7 +124,7 @@ class ChunkedNotes(Base):
     chunk_text = Column(Text)
     embeddings=Column(Vector(1024))
 
-# this may change but unlikely, the "processed notes are just the regular notes where we remove things that we do not care
+# this may change but unlikely, the "processed notes" are just the regular notes where we remove things that we do not care
 # about such as vitals and vaccinations etc. while they are used extensively by all the models the chirpp team do not use
 # them directly, so they will stay as is most likely
 class ProcessedNotes(Base):
@@ -175,5 +175,6 @@ class Cases(Base):
     version = Column(Integer, nullable=False, default=1)
 
 
-# If you look at the other branches you will see that there were more tables that were reserved for auth because
-# I was planning on writing the whole ui myself. So I have removed those tables and leave it up to you
+# If you look at the other branches you will see that there were more tables that were reserved for auth and logging because
+# I was planning on writing the whole ui myself. So I have removed those tables and leave it up to you, there needs to be
+# very sctrict logging of who did what and when, I will leave it up to you to decide how you want to do that.
