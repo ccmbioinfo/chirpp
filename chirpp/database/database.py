@@ -5,7 +5,7 @@ import pandas as pd
 from sqlalchemy import MetaData, select, insert
 from sqlalchemy.orm import sessionmaker
 
-from chirpp.database import utils
+from chirpp.postprocess.utils import process_postal
 
 
 # a lot of the methods rely on other functions returning errors, in this instance I think it makes sense because most of
@@ -20,7 +20,8 @@ class DataBase:
         self.engine = engine
         self.meta = MetaData(bind=self.engine)
         self.meta.reflect(bind=self.engine)
-        self.session = sessionmaker(self.engine)
+        session = sessionmaker(self.engine)
+        self.session=session()
         self.tables = self.meta.tables
         self.get_mrns()
         self.get_csns()
@@ -210,7 +211,7 @@ class DataBase:
 
         new_problems_df = pd.DataFrame({"csn": problems["csn"].drop_duplicates(), "problem_list": problems_merged})
 
-        sheet1, sheet2 = utils.prepare_report(visits, cases, patients, new_problems_df)
+        sheet1, sheet2 = self._prepare_report(visits, cases, patients, new_problems_df)
         return sheet1, sheet2
 
     # TODO this is not implemented yet, we need to figure out how to update the raw data, or if needed at all
@@ -218,6 +219,7 @@ class DataBase:
     def update_raw(self, txt_file):
         pass
 
+    # TODO this is not implemented yet, I need to figure out versioning
     def update_report(self, excel_file, col_dict):
         """
         here the assumption is that the sheet 2 is always the cases, and it is always the second sheet.
@@ -227,7 +229,7 @@ class DataBase:
         pass
 
     #TODO I need to have a date selection I cannot get visits from the future
-    def previous_visits(self, merged_notes):
+    def previous_visits(self, mrns, end_date=None):
         """
         get previous visits for a patient
         :param mrn: a list of mrns to get previous visits for
@@ -237,11 +239,13 @@ class DataBase:
 
         previous_visits = self.session.execute(
             select(visits_table.c.mrn, visits_table.c.csn, visits_table.c.phac_narrativie). \
-            where(visits_table.c.mrn.in_(merged_notes["MRN"].tolist()))) \
-            .fetchall()
+            where((visits_table.c.mrn.in_(mrns)) & (visits_table.c.arrival_date < end_date if end_date else True)
+                  )). \
+            fetchall()
 
+        previous_visits = pd.DataFrame(previous_visits).groupby(["mrn"])
         visit_texts = []
-        for mrn in merged_notes["mrn"]:
+        for mrn in mrns:
             patient_visits = previous_visits[previous_visits["mrn"] == mrn]
             if patient_visits.shape[0] == 0:
                 visit_texts.append(None)
@@ -255,4 +259,84 @@ class DataBase:
                     combined_texts.append(visit_text)
                 visit_texts.append("\n\n".join(combined_texts))
 
-        return visit_texts
+        previous_visits_df=pd.DataFrame({"mrn": mrns, "previous visits": visit_texts})
+        return previous_visits_df
+
+    def _get_report(self, patients, visits, cases, problems):
+
+
+        header = ["CSN", "MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "ER Day", "INJ DATE", "Hr", "Min",
+                  "AM/PM", "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative",
+                  "W4P", "NO1", "BP1", "NO2", "BP2", "NO3", "BP3", 'veh', 'veh p', "Notes", 'LOS', "DISP",
+                  "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
+                  "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "previous visits"]
+
+        merged = visits.merge(patients, how="inner", on="mrn")
+        merged = merged.merge(cases, how="left", on="csn")
+        merged = merged.merge(problems, how="left", on="csn")
+        previous_visits= self.get_previous_visits(merged["mrn"].drop_duplicates().to_list(), merged["arrival_date"].min())
+        merged = merged.merge(previous_visits, how="left", on="mrn")
+
+        cols_to_keep = []
+        for col in merged.columns:
+            if "vector" in col or col == "id":
+                continue
+            else:
+                cols_to_keep.append(col)
+
+        merged = merged[cols_to_keep]
+        # adding all columns here so I don't forget them as they are getting more and more autofilled
+        # not for the E columns as they are not needed for chirpp but are internal
+        # this can probably be a loop and a dict but still hard coded so will leave it for now
+
+        report_df = pd.DataFrame(columns=header)
+        report_df["POSTAL"] = merged["postal_code"].apply(process_postal)
+        report_df["SEX"] = merged["sex"]
+        report_df["MRN"] = merged["mrn"]
+        report_df["CSN"] = merged["csn"]
+        report_df["ScrMRN"] = merged["scr_mrn"]
+        report_df["DOB"] = merged["dob"]
+        report_df["ER Date"] = merged["arrival_date"]
+        report_df["ER Time"] = merged["arrival_time"]
+        report_df["ER Day"] = merged["day_of_week"]
+        report_df["CTAS"] = merged["ctas"]
+        report_df["Chief Complaint"] = merged["chief_complaint"]
+        report_df["W4P"] = merged["w4p"]
+        report_df["Notes"] = merged["notes"]
+        report_df["LOS"] = merged["los"]
+        report_df["Diagnosis"] = merged["diagnosis"]
+        report_df["Problem List"] = merged["problem_list"]
+        report_df["PHAC Narrative"] = merged["phac_narrative"]
+        report_df["SK Narrative"] = merged["sk_narrative"]
+        report_df["I/O"] = merged["i_o"]
+        report_df["IN"] = merged["intent"]
+        report_df["sub"] = merged["sub"]
+        report_df["subID"] = merged["sub_id"]
+        report_df["chirpp"] = merged["chirpp"]
+        report_df["NO1"] = merged["no1"]
+        report_df["NO2"] = merged["no2"]
+        report_df["NO3"] = merged["no3"]
+        report_df["BP1"] = merged["bp1"]
+        report_df["BP2"] = merged["bp2"]
+        report_df["BP3"] = merged["bp3"]
+        report_df["sd1"] = merged["sd1"]
+        report_df["sd2"] = merged["sd2"]
+        report_df["sd3"] = merged["sd3"]
+        report_df["sd4"] = merged["sd4"]
+        report_df["sd5"] = merged["sd5"]
+        report_df["SPORTS CODE"] = merged["sports_code"]
+        report_df["INJ DATE"] = merged["injury_date"]
+        report_df["Hr"] = merged["injury_hour"]
+        report_df["Min"] = merged["injury_min"]
+        report_df["AM/PM"] = merged["am_pm"]
+        report_df["DISP"] = merged["disp"]
+        report_df["LOCATION"] = merged["location"]
+        report_df["AREA"] = merged["area"]
+        report_df["PLACE"] = merged["place"]
+        report_df["veh"] = merged["veh"]
+        report_df["veh p"] = merged["veh_p"]
+
+        sheet2 = report_df[report_df["chirpp"] == True]
+        sheet1 = report_df[pd.isna(report_df["chirpp"])]
+
+        return sheet1, sheet2

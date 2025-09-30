@@ -4,6 +4,16 @@ import pandas as pd
 
 from uuid import uuid4
 
+def scramble_mrn(mrn):
+    """
+    takes the mrn value of the note and runs a simple scramble
+    :param mrn: mrn
+    :return: scrambled mrn
+    """
+    mrn = str(mrn).strip()
+    last_digit = (int(mrn[-1]) + int(mrn[-2])) % 10
+    return mrn[:-2] + mrn[-1] + mrn[-2] + str(last_digit)
+
 def process_postal(postal):
     """
     remove the last 3 digits of postal code to increase privacy
@@ -398,6 +408,7 @@ def get_disposition(merged_notes, disposition, no1, bp1):
 def get_patients(inference_notes):
     patients = inference_notes[["MRN", "Date of Birth"]].drop_duplicates()
     patients["Date of Birth"] = pd.to_datetime(patients["Date of Birth"])
+    patients["scr_mrn"]=patients["MRN"].apply(scramble_mrn)
     return patients
 
 def get_visit_notes(inference_notes):
@@ -442,7 +453,7 @@ def get_visits(inference_notes, processed_notes, note_types):
     visits["sk_narrative"] = narrative
 
     # some touchups requested by the chirpp team
-    visits["Postal Code"]=visits["Postal Code"].apply(process_postal)
+
     visits["Sex"]=visits["Sex"].apply(process_sex)
     visits["CTAS"]=visits["CTAS"].apply(process_ctas)
     visits["notes"]=get_visit_notes(inference_notes)

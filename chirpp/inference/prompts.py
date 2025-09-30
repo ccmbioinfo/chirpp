@@ -307,7 +307,17 @@ code indicators (```). You do not need to specify that this is a JSON.
 
 Clinical Note Text:
 
-"""
+""",
+"rerank":"""
 
+Given a pair of question and a clinical note determine if the the note is relevant to the question. Answer with yes or no. 
+Do not provide any additional information or explanation.
+
+Question::
+{query}
+
+Clinical Note Text:
+{context}
+"""
 
 }
