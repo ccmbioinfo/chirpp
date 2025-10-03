@@ -2,7 +2,6 @@ import re
 import json
 import pandas as pd
 import torch
-from spacy.lang.fi.tokenizer_exceptions import suffix
 
 from transformers import (pipeline, AutoModelForSequenceClassification,
                           AutoTokenizer, AutoModelForCausalLM,
@@ -100,6 +99,11 @@ class Inference:
         self.models=model_dict
 
     def classify(self, notes):
+        """
+        run chirpp binary classificaiton model
+        :param notes: notes
+        :return: probability of being a chirpp case
+        """
         model_config=self.models["classification"]
         model=self._get_model(model_config)
         probs=model(notes, model_config["labels"])
@@ -112,7 +116,7 @@ class Inference:
         hacky llamacpp output parsing to get the summary, this has a lot more flexibility than the rest of the columns
         because the output is just free text so it doesn't matter if there is a preceeiding or trailing space or anything like
         that.
-        :return:
+        :return: summary text, this is run for all ED presentations
         """
         model_config = self.models["summary"]
         outputs=self._run_causal(model_config, notes)
@@ -144,7 +148,7 @@ class Inference:
         """
         parse the llamaccp output for the substance model, this is hacky because the llama outputs while mostly ok
         are not 100% reliable to have correct formatting and sometimes quites are in different placets etc.
-        :return:
+        :return: whether substances are involved and if so what (comma separated text)
         """
         model_config = self.models["substance"]
         outputs = self._run_causal(model_config, notes)
@@ -212,6 +216,11 @@ class Inference:
 
 
     def io(self, notes):
+        """
+        whether the incident happened inside or outside
+        :param notes: notes
+        :return: io code
+        """
         model_config = self.models["io"]
         outputs = self._run_causal(model_config, notes)
         io=[]
@@ -226,6 +235,11 @@ class Inference:
         return io
 
     def time(self, notes):
+        """
+        the hour and min of injury
+        :param notes: notes
+        :return: HH:MM format
+        """
         model_config = self.models["time"]
         outputs = self._run_causal(model_config, notes)
         hrs=[]
@@ -251,6 +265,11 @@ class Inference:
         return hrs, mins
 
     def date(self, notes):
+        """
+        how many days ago 0 for today the incident happened
+        :param notes: notes
+        :return: num days ago
+        """
         model_config = self.models["date"]
         outputs = self._run_causal(model_config, notes)
         dates=[]
@@ -267,6 +286,11 @@ class Inference:
         return dates
 
     def ampm(self, notes):
+        """
+        am or pm
+        :param notes: notes
+        :return: am, pm or none if not relevant
+        """
         model_config = self.models["ampm"]
         outputs = self._run_causal(model_config, notes)
         ampm=[]
@@ -283,6 +307,11 @@ class Inference:
         return ampm
 
     def area(self, notes):
+        """
+        area codes for the incident
+        :param notes: notes
+        :return: area code or none
+        """
         model_config = self.models["area"]
         outputs = self._run_causal(model_config, notes)
         area=[]
@@ -299,6 +328,11 @@ class Inference:
         return area
 
     def location(self, notes):
+        """
+        location of the incident
+        :param notes: notes
+        :return: location code or none
+        """
         model_config = self.models["location"]
         outputs = self._run_causal(model_config, notes)
         location=[]
@@ -314,6 +348,11 @@ class Inference:
         return location
 
     def sports(self, notes):
+        """
+        whether organized sports were involved
+        :param notes: notes
+        :return: sports code or None
+        """
         model_config = self.models["sports"]
         outputs = self._run_causal(model_config, notes)
         sports=[]
@@ -392,12 +431,22 @@ class Inference:
         return relevance
 
     def chunk(self, notes):
+        """
+        semantic chunking
+        :param notes: notes
+        :return: chunked texts
+        """
         model_config = self.models["chunking"]
         model=self._get_model(model_config)
         chunks=model.chunk(notes)
         return chunks
 
     def embed(self, notes):
+        """
+        embed notes, this applies to note chunks, summaries and processed notes
+        :param notes: notes
+        :return: list of floats
+        """
         model_config = self.models["embeddings"]
         model=self._get_model(model_config)
         # this is a list of lists of tuples that is an index and list in the same order as the chunks which are in the
@@ -419,15 +468,14 @@ class Inference:
         by _run_llama or _run_causal
         """
         if config["type"] == "classification":
-            m = AutoModelForSequenceClassification.from_pretrained(config["model_dir"],
+            m = AutoModelForSequenceClassification.from_pretrained(config["model"],
                                                                    config["num_labels"])
-            t = AutoTokenizer.from_pretrained(config["model_dir"], padding=config["max_length"],
+            t = AutoTokenizer.from_pretrained(config["model"], padding=config["max_length"],
                                                       truncation=config["truncation"])
             model = pipeline("text-classification", model=m, tokenizer=t, device=self.device)
         elif config["type"] == "causal":
-            m=AutoModelForCausalLM.from_pretrained(config["model_dir"], device_map="auto")
-            t=AutoTokenizer.from_pretrained(config["model_dir"], padding=config["max_length"],
-                                            truncation=config["truncation"])
+            m=AutoModelForCausalLM.from_pretrained(config["model"], device_map="auto")
+            t=AutoTokenizer.from_pretrained(config["model"], truncation=config["truncation"])
             model = (m, t)
         elif config["type"] == "chunking":
             model=SemanticChunking(chunking_model=config["model"],
@@ -435,18 +483,26 @@ class Inference:
                                    min_sentences=config["min_sentences"],
                                    threshold=config["threshold"])
         elif config["type"] == "embeddings":
-            model=SentenceTransformer(config["model_dir"])
+            model=SentenceTransformer(config["model"])
         elif config["type"]=="gguf":
             # I'm not importing anything this has been a nightmare to set up and it's still not reliable especially
             # with cuda I'm leaving this here for completeness sake but I will not be using it.
             from llama_cpp import Llama
-            model = Llama(model_path=config["model_dir"], n_ctx=4096, n_gpu_layers=0, n_threads=config["n_threads"])
+            model = Llama(model_path=config["model"], n_ctx=config["context"],
+                          n_gpu_layers=config["gpu_layers"], n_threads=config["n_threads"])
         else:
             raise NotImplementedError(f"The model type {config['type']} is not implemented")
 
         return model
 
     def _replace_labels(self, preds, label_dict, cutoff):
+        """
+        clean up hf model inference outcomes and replace the model labels with chirpp labels
+        :param preds: classification model outcomes
+        :param label_dict: label dicts, mapping between model label and chirpp label
+        :param cutoff: if below this cutoff we leave it alone
+        :return:
+        """
 
         edited_labels=[]
         for lab in preds:
@@ -469,6 +525,12 @@ class Inference:
 
     #I've given up on llamacpp, gguf conversion is a mess, can't get it to work with cuda, I'm done.
     def _run_llama(self, config, notes):
+        """
+        not being used but there for future maybe
+        :param config: model config
+        :param notes: notes
+        :return: whatever the model returns, this is to be called with one of the methods above so see their description
+        """
         model = self._get_model(config)
         messages = [
             {"role": "system", "content": prompt_dict["system"]},
@@ -484,6 +546,12 @@ class Inference:
         return results
 
     def _run_causal(self, config, notes):
+        """
+        run Causal model
+        :param config: model config from inference config
+        :param notes: notes
+        :return: returns whatever the model returs, to be used by one mof the non _ methods
+        """
         model, tokenizer = self._get_model(config)
 
         stop_token_ids = tokenizer.encode(config["stop_token"], add_special_tokens=False)
