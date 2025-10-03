@@ -34,6 +34,7 @@ class DataBase:
         csns = select(self.tables["visits"].c.csn)
         self.csns = [item[0] for item in self.session.execute(csns).fetchall()]
 
+    #TODO need version updates
     def to_db(self, patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases):
         """
         add data to the database
@@ -173,8 +174,6 @@ class DataBase:
 
         return visits
 
-    # TODO get appropriate columns, process postal and scramble mrn add sheet1 and sheet2 and make sure the
-    # the versions are the latest one also need to add the previous visits column
     def get_report(self, start, end):
         """
         generate a report from the database
