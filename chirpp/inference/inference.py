@@ -106,7 +106,7 @@ class Inference:
         """
         model_config=self.models["classification"]
         model=self._get_model(model_config)
-        probs=model(notes, model_config["labels"])
+        probs=model(notes)
         results=self._replace_labels(probs, model_config["labels"], model_config["cutoff"])
         return results
 
@@ -140,7 +140,7 @@ class Inference:
         """
         model_config = self.models["intent"]
         model = self._get_model(model_config)
-        intents = model(notes, model_config["labels"])
+        intents = model(notes)
         results = self._replace_labels(intents, model_config["labels"], model_config["cutoff"])
         return results
 
@@ -469,10 +469,11 @@ class Inference:
         """
         if config["type"] == "classification":
             m = AutoModelForSequenceClassification.from_pretrained(config["model"],
-                                                                   config["num_labels"])
+                                                                   num_labels=config["num_labels"])
             t = AutoTokenizer.from_pretrained(config["model"], padding=config["max_length"],
                                                       truncation=config["truncation"])
-            model = pipeline("text-classification", model=m, tokenizer=t, device=self.device)
+            model = pipeline("text-classification", model=m, tokenizer=t, device=self.device,
+                            truncation=config["truncation"], max_length=config["max_length"])
         elif config["type"] == "causal":
             m=AutoModelForCausalLM.from_pretrained(config["model"], device_map="auto")
             t=AutoTokenizer.from_pretrained(config["model"], truncation=config["truncation"])
@@ -508,7 +509,7 @@ class Inference:
         for lab in preds:
             edited = lab["label"]
             edited = edited.replace("LABEL_", "")
-            actual=label_dict[edited]
+            actual=label_dict[int(edited)]
             edited_labels.append(int(actual))
 
         scores=[]

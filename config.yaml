@@ -13,16 +13,15 @@ pre_process:
   "physical_exam", "other", "user_index"]
   
   line_col: "LINE"
-  section_rules: "chirpp/preprocess/preprocess_patterns.json"
-  note_types:
-    Note Type: ["ED Provider Notes", "ED Triage Notes"]
+  section_rules: "chirpp/chirpp/preprocess/preprocess_patterns.json"
+  note_types: ["ED Provider Notes", "ED Triage Notes"]
   include_cols: ["Patient Name", "Chief Complaint", "Diagnosis", "Problem List", "CHIRPP Icon", "LOS"]
-  group_cols: ["MRN", "Arrival Date"]
+  group_cols: ["CSN"]
   orientation: "front"
   keep_unlabelled: true
   anonymize: true
 
-  terms_to_fix:  {'hx': 'history of', '#': 'fracture', 'c/o': 'complaining of', 'f/u': 'follow up',
+  terms_to_replace:  {'hx': 'history of', '#': 'fracture', 'c/o': 'complaining of', 'f/u': 'follow up',
   'fu': 'follow up', 'w': 'with', 'ortho': 'orthopaedics', 'psych': 'psychiatry', 'cardio': 'cardiology',
   'ophtho': 'ophthalmology', 'ENT': 'otolaryngology', 'plastics': 'plastic surgery', 'physio': 'physiotherapy',
   'heme': 'hematology', 'rx': 'prescription', 'tx': 'treatment', 'd': 'days ago', 'mo': 'months', 'lac': 'laceration',
@@ -82,10 +81,11 @@ inference:
       prompt_name: "summary"
       max_tokens: 120
       temperature: 0.7
+      truncation: true
       stop_token: "}"
     time:
       type: "causal"
-      model: "./models/time" # need to check this
+      model: "./chirpp//models/time" # need to check this
       prompt_name: "time"
       truncation: true
       max_tokens: 30
@@ -93,7 +93,7 @@ inference:
       stop_token: "}"
     ampm:
       type: "causal"
-      model: "./models/ampm" # need to check this
+      model: "./chirpp/models/ampm" # need to check this
       prompt_name: "time"
       truncation: true
       max_tokens: 30
@@ -101,7 +101,7 @@ inference:
       stop_token: "}"
     date:
       type: "causal"
-      model: "./models/date" # need to check this
+      model: "./chirpp/models/date" # need to check this
       prompt_name: "date"
       truncation: true
       max_tokens: 30
@@ -117,7 +117,7 @@ inference:
       stop_token: "}"
     area:
       type: "causal"
-      model: "./models/area" # need to check this
+      model: "./chirpp/models/area" # need to check this
       prompt_name: "area"
       truncation: true
       max_tokens: 30
@@ -125,7 +125,7 @@ inference:
       stop_token: "}"
     io:
       type: "causal"
-      model: "./models/io" # need to check this
+      model: "./chirpp/models/io" # need to check this
       prompt_name: "io"
       truncation: true
       max_tokens: 30
@@ -133,7 +133,7 @@ inference:
       stop_token: "}"
     safety:
       type: "causal"
-      model: "./models/safety" # need to check this
+      model: "./chirpp/models/safety" # need to check this
       prompt_name: "safety"
       truncation: true
       max_tokens: 30
@@ -141,7 +141,7 @@ inference:
       stop_token: "}"
     substance:
       type: "causal"
-      model: "./models/substance" # need to check this
+      model: "./chirpp/models/substance" # need to check this
       prompt_name: "substance"
       truncation: true
       max_tokens: 100
@@ -149,7 +149,7 @@ inference:
       stop_token: "}"
     sports:
       type: "causal"
-      model: "./models/sports" # need to check this
+      model: "./chirpp/models/sports" # need to check this
       prompt_name: "sports"
       truncation: true
       max_tokens: 10
@@ -159,16 +159,16 @@ inference:
       type: "causal"
       prompt_name: "rerank"
       truncation: true
-      model: "./models/rerank"
+      model: "./chirpp/models/rerank"
     chunking:
       type: "chunking"
       chunk_size: 128
       min_sentences: 1
       threshold: 0.5
-      model": "./models/m2v_model"
-    embedding:
-      type: "sentence_transformer"
-      model: "models/qwen3_embedding_06B"
+      model": "./chirpp/models/m2v_model"
+    embeddings:
+      type: "embeddings"
+      model: "./chirpp/models/qwen3_embedding_06B"
     gguf_example: #this is just an example
       type: "gguf"
       model: "model_dir"
