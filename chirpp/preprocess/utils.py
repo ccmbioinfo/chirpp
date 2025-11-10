@@ -6,8 +6,6 @@ import Levenshtein as ls
 from math import ceil
 import string
 
-spacy.prefer_gpu()
-
 class NotEnoughItemsError(Exception):
     pass
 
@@ -177,3 +175,5 @@ def replace_terms(text, to_fix):
         to_find = re.compile(to_find)
         modified_text = re.sub(to_find, to_fix[key], text)
         return modified_text
+
+        

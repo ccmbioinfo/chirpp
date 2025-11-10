@@ -70,7 +70,7 @@ section_remover_for_inference = SectionRemover(lang_model="en_core_web_trf",
                                                gpu=device)
 
 preprocess=Preprocess(args.notes, preprocess_config, section_remover_for_inference)
-merged_notes, processed_notes = preprocess.preprocess_pipeline()
+raw_notes, processed_notes = preprocess.preprocess_pipeline()
 
 
 #### INFERENCE #####
@@ -85,7 +85,7 @@ inference=Inference(inference_config, device=device)
 # are different so it will need addional arguments and that will make it more complicated. The code here I think is very
 # readable and easy to follow just not very DRY
 
-cutoff=get_probs(database, merged_notes["Arrival Date"].min(), #get the previous montth
+cutoff=get_probs(database, raw_notes["Arrival Date"].min(), #get the previous month
                  inference_config["pos_complaints"], time_delta=inference_config["time_delta"])
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Running chirpp classifcation")
@@ -157,11 +157,15 @@ ampm=inference.ampm(notes_to_process)
 
 #weirdly the time is more reliable than the ampm so we will use it and replace values
 for i in range(len(ampm)):
-    if hr[i] is not None and hr[i]<12:
-        ampm[i]=1
-    elif hr[i] is not None and 12 <= hr[i] <= 23:
-        ampm[i]=2
-
+    try:
+        hr=int(hrs[i])
+        if hrs[i] is not None and hrs[i]<12:
+            ampm[i]=1
+        elif hrs[i] is not None and 12 <= hrs[i] <= 23:
+            ampm[i]=2
+    except:
+        continue
+        
 # fill it in
 processed_notes["intent"][processed_notes["is_chirpp"]]=intents
 processed_notes["subs"][processed_notes["is_chirpp"]]=subs

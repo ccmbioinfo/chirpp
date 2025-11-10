@@ -1,6 +1,5 @@
 import os
 
-from medspacy.section_detection import SectionRule
 from chirpp.preprocess.utils import *
 
 class SectionRemover:
@@ -26,6 +25,8 @@ class SectionRemover:
 
         self.lang = lang_model
         nlp = spacy.load(self.lang)
+        
+        from medspacy.section_detection import SectionRule
         nlp.add_pipe("medspacy_sectionizer")
         sectionizer = nlp.get_pipe("medspacy_sectionizer")
 
@@ -35,7 +36,7 @@ class SectionRemover:
 
         if additional_rules is not None:
             sectionizer.add(additional_rules)
-
+        
         self.sectionizer = sectionizer
         self.nlp = nlp
         self.keep_sections = keep_sections
@@ -74,7 +75,7 @@ class Preprocess:
     create 2 files one for summarization another for classification, the order of the notes will be the same in both files
     """
 
-    def __init__(self, note_file, params, section_remover, keep_unlabelled=True, anoymize=False):
+    def __init__(self, note_file, params, section_remover, keep_unlabelled=True, anonymize=False):
         """
         init method to get all the info needed to start preprocessing
         :param note_file: path to the excel file that is coming from EPIC
@@ -88,7 +89,7 @@ class Preprocess:
         self.params = params
         self.section_remover = section_remover
         self.keep_unlabelled = keep_unlabelled
-        self.anoymize = anoymize
+        self.anonymize = anonymize
 
     def _read_raw_notes(self):
         """
@@ -106,7 +107,7 @@ class Preprocess:
             notes = process_epic_dump(self.note_file)
         return notes
 
-    def _merge_notes(self, notes, group_cols=["CSN"], line_col="Note Line"):
+    def _merge_notes(self, notes, group_cols=["CSN"], line_col="Note Line", note_types=["ED Provider Notes", "ED Triage Notes"]):
         """
         Merge notes, in the EPIC database sometimes if a note is too long they are split into multiple lines, this will
         combine those lines into one note and return the dataframe where no other columns are changes. I am also removing
@@ -118,6 +119,7 @@ class Preprocess:
         :return: return the dataframe with merged notes. In addition to merging the notes I am replacing some abbreviations in the text
         the dict showing these are in the utils file
         """
+        notes=notes[notes["Note Type"].isin(note_types)]
         notes_grouped = notes.groupby(group_cols)
 
         merged_raw = []
@@ -130,35 +132,16 @@ class Preprocess:
                 "Note Text"].tolist()])
 
             note_text = remove_extra_spaces(note_text)
-            if self.terms_to_replace is not None:
+            if self.params['terms_to_replace'] is not None:
                 note_text = replace_terms(note_text, self.params['terms_to_replace'])
 
             df["Note Text"] = note_text
             merged_raw.append(df)
         merged_raw = pd.concat(merged_raw)
-        merged_raw = merged_raw[~merged_raw[["CSN"]].duplicated()]
+        merged_raw = merged_raw[~merged_raw[group_cols].duplicated()]
         return merged_raw
 
-    def _get_relevant_notes(self, merged_notes, note_types, group_cols=["CSN"]):
-        """
-        get relevant notes from the dataframe, this is used to filter out notes that are not relevant for the task
-        :param notes: dataframe with raw notes
-        :param note_types: list of note types to keep, if None will keep all note types
-        :return: dataframe with relevant notes, thisn one has only 2 columns, CNS and Note Text, the note text is from
-        the types of notes that we care about in the inference pipeline. This is an intermediate object to it will not be returned in the
-        pipeline
-        """
-        for_preprocessing = merged_notes[merged_notes["Note Type"].isin(note_types)]
-        for_preprocessing = for_preprocessing.groupby(group_cols)
-        relevant_notes = []
-        for csn, group in for_preprocessing:
-            notes = " ".join(group["Note Text"].tolist())
-            relevant_notes.append({"CSN": csn, "Note Text": notes})
-
-        relevant_notes = pd.DataFrame(relevant_notes)
-        return relevant_notes
-
-    def _remove_sections(self, relevant_notes, raw_notes, section_remover, keep_unlabelled=True, anonymize=False, ):
+    def _remove_sections(self, merged_notes, raw_notes, section_remover, keep_unlabelled=True, anonymize=False, ):
         """
         take all the relevant notes but remove all the sections that we do not care about, these are things like vaccinations, vitals etc
         I am using medspacy for this. This reduces the number of tokens that need to be processed so that a CPU bound llamacpp server actually
@@ -172,7 +155,7 @@ class Preprocess:
         :return:
         """
         processed_notes = []
-        for csn, note in zip(relevant_notes["CSN"], relevant_notes["Note Text"]):
+        for csn, note in zip(merged_notes["CSN"], merged_notes["Note Text"]):
             note_text = section_remover.remove_sections(note, keep_unlabelled)
             processed_notes.append({"CSN": csn, "processed_notes": note_text})
 
@@ -194,9 +177,9 @@ class Preprocess:
         :return: dataframe with processed notes and raw notes
         """
         raw_notes = self._read_raw_notes()
-        merged_notes = self._merge_notes(raw_notes, self.params["group_cols"], self.params["line_col"])
-        relevant_notes = self._get_relevant_notes(merged_notes, self.params["note_types"], self.params["group_cols"])
-        processed_notes = self._remove_sections(relevant_notes, raw_notes, self.section_remover, self.keep_unlabelled,
+        merged_notes = self._merge_notes(raw_notes, self.params["group_cols"], 
+                                         self.params["line_col"], note_types=self.params["note_types"])
+        processed_notes = self._remove_sections(merged_notes, raw_notes, self.section_remover, self.keep_unlabelled,
                                                self.anonymize)
 
-        return merged_notes, processed_notes
+        return raw_notes, processed_notes

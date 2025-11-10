@@ -7,9 +7,6 @@ setup(
     author='Alper Celik',
     author_email='alper.celik@sickkids.ca',
     packages=find_packages(),
-    install_requires=["pandas", "spacy", "medspacy", "spacy_transformers", "transformers", "torch", "tokenizers"
-                      "sentence-transformers", "Levenshtein"],
     zip_safe=False,
-    scripts=["chirpp/generate_report.py"],
     include_package_data=True
 )
