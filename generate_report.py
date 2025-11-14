@@ -78,7 +78,7 @@ raw_notes, processed_notes = preprocess.preprocess_pipeline()
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Running inference pipeline, this may take a while")
 
 inference_config=config["inference"]
-inference=Inference(inference_config, device=device)
+inference=Inference(inference_config["models"], device=device)
 
 # this is the inference pipeline just going throught the columns one by one I thought about doing this as a method
 # in the inferenc class but I will need to pass the cutoff and the number of notes that will need to run for different methods
@@ -90,14 +90,14 @@ cutoff=get_probs(database, raw_notes["Arrival Date"].min(), #get the previous mo
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Running chirpp classifcation")
 
-processed_notes["probs"]=inference.classify(processed_notes["processed_notes"])
+processed_notes["probs"]=inference.classify(processed_notes["processed_notes"].tolist(), return_probs=True)
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing notes")
-processed_notes["summary"]=inference.summarize(processed_notes["processed_notes"])
-processed_notes["summary_embeddings"]=inference.embed(processed_notes["summaries"])
+processed_notes["phac_narrative"]=inference.summarize(processed_notes["processed_notes"].tolist())
+processed_notes["phac_embeddings"]=inference.embed(processed_notes["summary"].tolist())
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Calculating embeddings for semantic search")
-processed_notes["processed_embeddings"]=inference.embed(processed_notes["processed_notes"])
+processed_notes["processed_embeddings"]=inference.embed(processed_notes["processed_notes"].tolist())
 
 
 # fill in columns because only chirpp cases will be inferred
@@ -133,7 +133,7 @@ processed_notes["disp"]=None
 
 # determine which notes are chirpp
 processed_notes["is_chirpp"]=processed_notes["probs"]>=cutoff
-notes_to_process=processed_notes["processed_notes"][processed_notes["is_chirpp"]]
+notes_to_process=processed_notes["processed_notes"][processed_notes["is_chirpp"]].tolist()
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classiftying intent")
 intents=inference.intent(notes_to_process)
@@ -151,33 +151,34 @@ location=inference.location(notes_to_process)
 io=inference.io(notes_to_process)
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Extracting date and time information")
-hr, min = inference.time(notes_to_process)
+hrs, mins = inference.time(notes_to_process)
 date=inference.date(notes_to_process)
 ampm=inference.ampm(notes_to_process)
 
 #weirdly the time is more reliable than the ampm so we will use it and replace values
 for i in range(len(ampm)):
     try:
-        hr=int(hrs[i])
         if hrs[i] is not None and hrs[i]<12:
             ampm[i]=1
         elif hrs[i] is not None and 12 <= hrs[i] <= 23:
             ampm[i]=2
+        else:
+            continue
     except:
         continue
         
 # fill it in
 processed_notes["intent"][processed_notes["is_chirpp"]]=intents
-processed_notes["subs"][processed_notes["is_chirpp"]]=subs
-processed_notes["sub_ids"][processed_notes["is_chirpp"]]=sub_ids
-processed_notes["io"][processed_notes["is_chirpp"]]=io
-processed_notes["hr"][processed_notes["is_chirpp"]]=hr
-processed_notes["min"][processed_notes["is_chirpp"]]=min
-processed_notes["date"][processed_notes["is_chirpp"]]=date
-processed_notes["ampm"][processed_notes["is_chirpp"]]=ampm
+processed_notes["sub"][processed_notes["is_chirpp"]]=subs
+processed_notes["sub_id"][processed_notes["is_chirpp"]]=sub_ids
+processed_notes["i_o"][processed_notes["is_chirpp"]]=io
+processed_notes["injury_hour"][processed_notes["is_chirpp"]]=hrs
+processed_notes["injury_min"][processed_notes["is_chirpp"]]=mins
+processed_notes["injury_date"][processed_notes["is_chirpp"]]=date
+processed_notes["am_pm"][processed_notes["is_chirpp"]]=ampm
 processed_notes["area"][processed_notes["is_chirpp"]]=area
 processed_notes["location"][processed_notes["is_chirpp"]]=location
-processed_notes["sports"][processed_notes["is_chirpp"]]=sports
+processed_notes["sports_code"][processed_notes["is_chirpp"]]=sports
 processed_notes["sd1"][processed_notes["is_chirpp"]]=sd1
 processed_notes["sd2"][processed_notes["is_chirpp"]]=sd2
 processed_notes["sd3"][processed_notes["is_chirpp"]]=sd3
@@ -187,23 +188,25 @@ processed_notes["sd5"][processed_notes["is_chirpp"]]=sd5
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Post Processing Notes")
 
 #### POSTPROCESSING #####
-postprocess=PostProcess(merged_notes, processed_notes, config["post_process"])
+#TODO This still needs testing
+postprocess=PostProcess(raw_notes, processed_notes, config["post_process"])
 patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases = postprocess.process(inference)
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Exporting to database")
 
 #### ADD TO DATABASE #####
+#TODO This still needs testing
 database.to_db(patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases)
 
 #### Generate Report for legacy support #####
 if args.excel_report and args.report_path is not None:
     print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Generating excel report")
-    sheet1, sheet2 = database.get_report(start=merged_notes["arrival_date"].min(),
-                        end=merged_notes["arrival_date"].max())
+    sheet1, sheet2 = database.get_report(start=raw_notes["arrival_date"].min(),
+                        end=raw_notes["arrival_date"].max())
 
     #TODO add previous visist to sheet 2
 
-    with pd.ExcelWriter(args.report_path) as out:
+    with pd.ExcelWriter(args.report_path, engine="xlsxwriter") as out:
         sheet1.to_excel(out, sheet_name="Sheet 1", index=False)
         sheet2.to_excel(out, sheet_name="Sheet 2", index=False)
 

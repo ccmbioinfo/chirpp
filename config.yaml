@@ -165,7 +165,7 @@ inference:
       chunk_size: 128
       min_sentences: 1
       threshold: 0.5
-      model": "./chirpp/models/m2v_model"
+      model: "./chirpp/models/m2v_model"
     embeddings:
       type: "embeddings"
       model: "./chirpp/models/qwen3_embedding_06B"
@@ -210,8 +210,8 @@ post_process:
   "BP2", "NO3", "BP3", 'veh', 'veh p',"Notes", 'LOS', "DISP", "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
   "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "probs", "pre_processed", "Disposition", "to_summarize"]
 
-  note_types: ['ED Triage Notes', 'ED Provider Notes', 'PS Initial Consult', 'Consults', 
-              'Consult Follow Up', 'Admission', 'Discharge Summary', 'Progress Notes', 
+  note_types: ['ED Triage Notes', 'ED Provider Notes', 'PS Initial Consult', 'Consults',
+              'Consult Follow Up', 'Admission', 'Discharge Summary', 'Progress Notes',
               'Assessment & Plan Note',  'ED Trauma Note', 'ED Trauma Notes',
               'ED Procedure Note', 'Procedures','Op Note', 'Transfer In / Advice Note']
               
