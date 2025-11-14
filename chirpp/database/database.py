@@ -23,16 +23,18 @@ class DataBase:
         session = sessionmaker(self.engine)
         self.session=session()
         self.tables = self.meta.tables
-        self.get_mrns()
-        self.get_csns()
 
-    def get_mrns(self):
+    @property
+    def mrns(self):
         mrns = select(self.tables["patients"].c.mrn)
-        self.mrns = [item[0] for item in self.session.execute(mrns).fetchall()]
+        mrns = [item[0] for item in self.session.execute(mrns).fetchall()]
+        return mrns
 
-    def get_csns(self):
+    @property
+    def csns(self):
         csns = select(self.tables["visits"].c.csn)
-        self.csns = [item[0] for item in self.session.execute(csns).fetchall()]
+        csns = [item[0] for item in self.session.execute(csns).fetchall()]
+        return csns
 
     #TODO need version updates
     def to_db(self, patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases):
@@ -106,6 +108,7 @@ class DataBase:
 
     # use this to pass a set of raw reports, this will be a bunch of joins
     # I need to select Triage and ED Provider notes from the database and pass it ot generate report
+    #TODO this needs to be a bit merge
     def get_raw(self, start, end):
         visits_table = self.tables["visits"]
         problems_table = self.tables["problems"]
@@ -174,6 +177,7 @@ class DataBase:
 
         return visits
 
+    #TODO this needs to be a big merge
     def get_report(self, start, end):
         """
         generate a report from the database
@@ -261,7 +265,7 @@ class DataBase:
         previous_visits_df=pd.DataFrame({"mrn": mrns, "previous visits": visit_texts})
         return previous_visits_df
 
-    def _get_report(self, patients, visits, cases, problems):
+    def _prepare_report(self, patients, visits, cases, problems):
 
 
         header = ["CSN", "MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "ER Day", "INJ DATE", "Hr", "Min",
@@ -273,7 +277,7 @@ class DataBase:
         merged = visits.merge(patients, how="inner", on="mrn")
         merged = merged.merge(cases, how="left", on="csn")
         merged = merged.merge(problems, how="left", on="csn")
-        previous_visits= self.get_previous_visits(merged["mrn"].drop_duplicates().to_list(), merged["arrival_date"].min())
+        previous_visits= self.previous_visits(merged["mrn"].drop_duplicates().to_list(), merged["arrival_date"].min())
         merged = merged.merge(previous_visits, how="left", on="mrn")
 
         cols_to_keep = []

@@ -145,7 +145,7 @@ class Cases(Base):
     __tablename__ = "chirpp_report"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
     csn = Column(Integer, ForeignKey("visits.csn"), index=True)
-    injury_date = Column(Date, index=True)
+    injury_date = Column(Integer, index=True)
     injury_hour = Column(Integer)
     injury_min = Column(Integer)
     am_pm = Column(String)

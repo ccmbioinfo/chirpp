@@ -70,7 +70,6 @@ class SemanticChunking:
     def chunk_notes(self, notes):
         """Chunk notes into semantic segments. this will return a list of strings, i will then use an embedding model"""
         chunker = SemanticChunker(
-            embedding_model=self.chunking_model,
             threshold=self.threshold,  # Similarity threshold (0-1) or (1-100) or "auto"
             chunk_size=self.chunk_size,  # Maximum tokens per chunk
             min_sentences=self.min_sentences,  # Initial sentences per chunk,
@@ -107,7 +106,7 @@ class Inference:
         model_config=self.models["classification"]
         model=self._get_model(model_config)
         probs=model(notes)
-        results=self._replace_labels(probs, model_config["labels"], model_config["cutoff"])
+        results=self._replace_labels(probs, model_config["labels"], cutoff=0, return_probs=True)
         return results
 
 
@@ -141,7 +140,7 @@ class Inference:
         model_config = self.models["intent"]
         model = self._get_model(model_config)
         intents = model(notes)
-        results = self._replace_labels(intents, model_config["labels"], model_config["cutoff"])
+        results = self._replace_labels(intents, model_config["labels"], model_config["cutoff"], return_probs=False)
         return results
 
     def substance(self, notes):
@@ -496,7 +495,7 @@ class Inference:
 
         return model
 
-    def _replace_labels(self, preds, label_dict, cutoff):
+    def _replace_labels(self, preds, label_dict, cutoff, return_probs=True):
         """
         clean up hf model inference outcomes and replace the model labels with chirpp labels
         :param preds: classification model outcomes
@@ -516,13 +515,23 @@ class Inference:
         for lab in preds:
             scores.append(lab["score"])
 
-        results=[]
-        for lab, scr in zip(edited_labels, scores):
-            if scr >= cutoff:
-                results.append(lab)
-            else:
-                results.append(None)
-        return results
+        if return_probs:
+            edited_probs=[]
+            for prob, lab in zip(scores, edited_labels):
+                if lab==0:
+                    edited_probs.append(1-prob)
+                else:
+                    edited_probs.append(prob)
+            return edited_probs
+
+        else:
+            results=[]
+            for lab, scr in zip(edited_labels, scores):
+                if scr >= cutoff:
+                    results.append(lab)
+                else:
+                    results.append(None)
+            return results
 
     #I've given up on llamacpp, gguf conversion is a mess, can't get it to work with cuda, I'm done.
     def _run_llama(self, config, notes):

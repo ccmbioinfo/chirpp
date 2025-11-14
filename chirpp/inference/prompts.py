@@ -55,8 +55,8 @@ using the following codes:
 	95: service or gas station for automotives, 
 	96: warehouse, 
 	97: office building, 
-	98: hotel/motel/bed and breakfast, resort, 1
-	09: other commercial and trade area like bank, laundromat, funeral home, veterenerian office, 
+	98: hotel/motel/bed and breakfast, resort, 
+	109: other commercial and trade area like bank, laundromat, funeral home, veterenerian office, 
 	141: remote undevloped place, swamp, snowmobile track, 
 	142: railway tracks not including station, 
 	143: camp grounds, trailer park, 

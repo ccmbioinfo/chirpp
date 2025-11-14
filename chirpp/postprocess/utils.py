@@ -421,10 +421,10 @@ def get_visit_notes(inference_notes):
 
 
 #the notes colum does not contain the doctors notes but these are notes for the chirpp team.
-def get_visits(inference_notes, processed_notes, note_types):
-    inference_notes = inference_notes[~pd.isna(inference_notes["Note Text"])]
+def get_visits(raw_notes, processed_notes, note_types):
+    raw_notes = raw_notes[~pd.isna(raw_notes["Note Text"])]
 
-    visits = inference_notes[["CSN", "Sex", "MRN", "Arrival Date", "Date of Birth", "Arrival Time", "Postal Code",
+    visits = raw_notes[["CSN", "Sex", "MRN", "Arrival Date", "Date of Birth", "Arrival Time", "Postal Code",
                           "Chief Complaint", "Diagnosis", "Disposition", "CTAS", "Address", "City", "LOS",
                           "Province"]].drop_duplicates()
 
@@ -438,7 +438,7 @@ def get_visits(inference_notes, processed_notes, note_types):
     visits = visits.drop(columns=["Date of Birth"])
     visits["day_of_week"] = visits["Arrival Date"].dt.day_name()
 
-    for_narrative = inference_notes[inference_notes["Note Type"].isin(note_types)]
+    for_narrative = raw_notes[raw_notes["Note Type"].isin(note_types)]
     for_narrative["Note Type"] = pd.Categorical(for_narrative["Note Type"],
                                                 categories=note_types)
 
@@ -456,7 +456,7 @@ def get_visits(inference_notes, processed_notes, note_types):
 
     visits["Sex"]=visits["Sex"].apply(process_sex)
     visits["CTAS"]=visits["CTAS"].apply(process_ctas)
-    visits["notes"]=get_visit_notes(inference_notes)
+    visits["notes"]=get_visit_notes(raw_notes)
     visits=visits.merge(processed_notes[["CSN", "probs"]], how="left", on="CSN")
 
     visits = visits.rename(columns={"CSN": "csn", "Sex": "sex", "MRN": "mrn",
@@ -574,14 +574,14 @@ def get_cases(inference_notes, visits):
 
     # some manual touchups that we somewhow keep accumulating
     for i in range(joined.shape[0]):
-        if joined["i_o"][i]=="1":
-            joined["i_o"][i]="I"
-        elif joined["i_o"][i]=="2":
-            joined["i_o"][i]="O"
+        if joined["io"][i]=="1":
+            joined["io"][i]="I"
+        elif joined["io"][i]=="2":
+            joined["io"][i]="O"
 
-        if joined["am_pm"][i]=="1":
-            joined["am_pm"][i]="a"
-        elif joined["am_pm"][i]=="2":
+        if joined["ampm"][i]=="1":
+            joined["ampm"][i]="a"
+        elif joined["ampm"][i]=="2":
             joined["am_pm"]="p"
 
     joined["no1"]=no1s
@@ -597,7 +597,7 @@ def get_cases(inference_notes, visits):
     joined["i_o"][joined["no1"] == 71] = 16
 
     joined["no2"][(joined["no1"] == 12) & (joined["bp1"] == 110)] = 41
-    joined["BP2"][(joined["no1"] == 12) & (data["bp1"] == 110)] = 135
+    joined["BP2"][(joined["no1"] == 12) & (joined["bp1"] == 110)] = 135
     joined["BP1"][joined["disp"] == 1] = 999
     joined["NO1"][joined["dis"] == 1] = 99
     joined["intent"][joined["no1"] == 71] = 16

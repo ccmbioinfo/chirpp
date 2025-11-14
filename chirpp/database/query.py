@@ -1,5 +1,4 @@
 import spacy
-from spacy.tokens import Span
 from negspacy.negation import Negex
 
 from sqlalchemy import select, func, desc
