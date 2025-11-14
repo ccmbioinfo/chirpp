@@ -29,8 +29,8 @@ class PostProcess:
 
     def process_inference_sections(self, visits):
         summaries=get_summaries(self.processed_notes)
-        processed_notes=get_processed_notes(self.inference_notes)
-        cases=get_cases(self.inference_notes, visits)
+        processed_notes=get_processed_notes(self.processed_notes)
+        cases=get_cases(self.processed_notes, visits)
         return summaries, processed_notes, cases
 
     def process(self, inference):

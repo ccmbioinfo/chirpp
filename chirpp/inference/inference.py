@@ -64,7 +64,7 @@ class SemanticChunking:
         """
         self.chunking_model = Model2VecEmbeddings(chunking_model)
         self.chunk_size=chunk_size
-        self.min_sentence=min_sentences
+        self.min_sentences=min_sentences
         self.threshold=threshold
 
     def chunk_notes(self, notes):
@@ -437,7 +437,7 @@ class Inference:
         """
         model_config = self.models["chunking"]
         model=self._get_model(model_config)
-        chunks=model.chunk(notes)
+        chunks=model.chunk_notes(notes)
         return chunks
 
     def embed(self, notes):
