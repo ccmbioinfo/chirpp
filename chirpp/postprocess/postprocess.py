@@ -24,7 +24,7 @@ class PostProcess:
         referrals=get_referrals(self.raw_notes)
         problems=get_problems(self.raw_notes)
         notes_df=get_epic_notes(self.raw_notes)
-        chunked_notes=get_chunked_notes(self.raw_notes, inference)
+        chunked_notes=get_chunked_notes(notes_df, inference)
         return patients, visits, referrals, problems, notes_df, chunked_notes
 
     def process_inference_sections(self, visits):
