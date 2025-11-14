@@ -70,6 +70,7 @@ class SemanticChunking:
     def chunk_notes(self, notes):
         """Chunk notes into semantic segments. this will return a list of strings, i will then use an embedding model"""
         chunker = SemanticChunker(
+            embedding_model=self.chunking_model,
             threshold=self.threshold,  # Similarity threshold (0-1) or (1-100) or "auto"
             chunk_size=self.chunk_size,  # Maximum tokens per chunk
             min_sentences=self.min_sentences,  # Initial sentences per chunk,
