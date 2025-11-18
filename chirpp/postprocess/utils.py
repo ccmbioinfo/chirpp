@@ -408,7 +408,7 @@ def get_disposition(merged_notes, disposition, no1, bp1):
 def get_patients(inference_notes):
     patients = inference_notes[["MRN", "Date of Birth"]].drop_duplicates()
     patients["Date of Birth"] = pd.to_datetime(patients["Date of Birth"])
-    patients["scr_mrn"]=patients["MRN"].apply(scramble_mrn)
+    patients["scrmrn"]=patients["MRN"].apply(scramble_mrn)
     return patients
 
 def get_visit_notes(inference_notes):
@@ -522,22 +522,24 @@ def get_summaries(inference_notes):
     summaries["version"]=1
     return summaries
 
+
 def get_chunked_notes(notes, inference):
     """
     :param notes: notes are the same dataframe from the get_epic_notes function,
     :param inference: chirpp.inference.Inference class instance
     :return:
     """
-    note_chunks=[]
-    for idx, note in zip(notes["id"], notes["note_text"]):
-        chunks=inference.chunk(note)
-        embeddings=inference.embed(chunks)
-        chunk_numbers=list(range(len(chunks)))
-        chunk_df=pd.DataFrame({"chunk_number":chunk_numbers, "chunk_text":chunks, "embeddings":embeddings})
-        chunk_df["note_id"]=idx
+    note_chunks = []
+    chunks = inference.chunk(notes["note_text"])
+    for idx, chunk in zip(notes["id"], chunks):
+        chunk_numbers = list(range(len(chunk)))
+        chunk_df = pd.DataFrame({"chunk_number": chunk_numbers, "chunk_text": chunk})
+        chunk_df["note_id"] = idx
         note_chunks.append(chunk_df)
 
-    note_chunks=pd.concat(note_chunks)
+    note_chunks = pd.concat(note_chunks)
+    embeddings = inference.embed(note_chunks["chunk_text"].tolist())
+    note_chunks["embeddings"] = embeddings
     return note_chunks
 
 def get_processed_notes(processed_notes):

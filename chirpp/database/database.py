@@ -106,9 +106,9 @@ class DataBase:
         conn.close()
         return None
 
-    # use this to pass a set of raw reports, this will be a bunch of joins
-    # I need to select Triage and ED Provider notes from the database and pass it ot generate report
-    #TODO this needs to be a bit merge
+
+    #this is not the most pythonic way to write sqlalchemy code, but it does take care of merging prolems and referalls just fine
+    # it is unlikely that we will be querying for raw reports repeatedly to clunk the process.
     def get_raw(self, start, end):
         visits_table = self.tables["visits"]
         problems_table = self.tables["problems"]
@@ -152,7 +152,7 @@ class DataBase:
         visits = visits[["csn", "mrn", "sex", "dob", "age", "postal_code", "arrival_date",
                          "arrival_time", "los", "chief_complaint", "problem_list", "diagnosis",
                          "ctas", "referrals", "note_type", "author_type", "author_service",
-                         "note_text", 'address', 'city', 'province', 'disposition', 'ctas', ]]
+                         "note_text", 'address', 'city', 'province', 'disposition']]
 
         visits = visits.rename(columns={
             "csn": "CSN", "mrn": 'MRN', 'sex': 'Sex', 'dob': 'Date of Birth', 'age': 'Age (Years)',
@@ -214,7 +214,7 @@ class DataBase:
 
         new_problems_df = pd.DataFrame({"csn": problems["csn"].drop_duplicates(), "problem_list": problems_merged})
 
-        sheet1, sheet2 = self._prepare_report(visits, cases, patients, new_problems_df)
+        sheet1, sheet2 = self._prepare_report(patients, visits, cases, problems)
         return sheet1, sheet2
 
     # TODO this is not implemented yet, we need to figure out how to update the raw data, or if needed at all
@@ -239,26 +239,39 @@ class DataBase:
         :return: return a list of csns and phac narratives for the patient, currently looking
         """
         visits_table = self.tables["visits"]
+        summaries_table = self.tables["summaries"]
 
         previous_visits = self.session.execute(
-            select(visits_table.c.mrn, visits_table.c.csn, visits_table.c.phac_narrativie). \
-            where((visits_table.c.mrn.in_(mrns)) & (visits_table.c.arrival_date < end_date if end_date else True)
-                  )). \
+            select(visits_table.c.mrn, visits_table.c.csn, visits_table.c.arrival_date). \
+                where((visits_table.c.mrn.in_(mrns)) & (
+                visits_table.c.arrival_date < end_date if end_date else True)
+                      )). \
             fetchall()
 
-        previous_visits = pd.DataFrame(previous_visits).groupby(["mrn"])
+        previous_visits = pd.DataFrame(previous_visits)
+
+        summaries = self.session.execute(select(summaries_table.c.csn, summaries_table.c.phac_narrative).where(
+            summaries_table.c.csn.in_(previous_visits["csn"]))).fetchall()
+
+        summaries = pd.DataFrame(summaries)
+
+        previous_visits=previous_visits.merge(summaries, on="csn")
+
         visit_texts = []
         for mrn in mrns:
             patient_visits = previous_visits[previous_visits["mrn"] == mrn]
             if patient_visits.shape[0] == 0:
                 visit_texts.append(None)
             elif patient_visits.shape[0] == 1:
-                visit_texts.append("\n".join([patient_visits["csn"].iloc[0],
-                                              patient_visits["phac_narrative"].iloc[0]]))
+                visit_texts.append(
+                    "\n".join([f"{str(patient_visits["csn"].iloc[0])} @ {patient_visits["arrival_date"].iloc[0]}",
+                               patient_visits["phac_narrative"].iloc[0]]))
             else:
                 combined_texts = []
-                for csn, text in zip(patient_visits["csn"].tolist(), patient_visits["phac_narrative"].tolist()):
-                    visit_text = "\n".join([csn, text])
+                for csn, arrival_date, text in zip(patient_visits["csn"].tolist(),
+                                                   patient_visits["arrival_date"].tolist(),
+                                                   patient_visits["phac_narrative"].tolist()):
+                    visit_text = "\n".join([f"{str(csn)} @ {arrival_date}", text])
                     combined_texts.append(visit_text)
                 visit_texts.append("\n\n".join(combined_texts))
 

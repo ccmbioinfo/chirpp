@@ -438,7 +438,7 @@ class Inference:
         """
         model_config = self.models["chunking"]
         model=self._get_model(model_config)
-        chunks=model.chunk_notes(notes)
+        chunks=[model.chunk_notes(note) for note in notes]
         return chunks
 
     def embed(self, notes):
@@ -449,14 +449,7 @@ class Inference:
         """
         model_config = self.models["embeddings"]
         model=self._get_model(model_config)
-        # this is a list of lists of tuples that is an index and list in the same order as the chunks which are in the
-        # same order as the notes, each "chunk" instance is a list of strings
-        embeddings=[]
-        for text in notes:
-            text_embeddings=model.encode(text).tolist()
-            embeddings.append([(index, item) for index, item in enumerate(text_embeddings)])
-        # this will return a tensor of shape (n_chunks, embedding_dim) I need to split it
-        # and make it something postgres compatible
+        embeddings=model.encode(notes).tolist()
         return embeddings
 
 
