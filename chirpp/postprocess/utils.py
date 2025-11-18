@@ -408,7 +408,7 @@ def get_disposition(merged_notes, disposition, no1, bp1):
 def get_patients(inference_notes):
     patients = inference_notes[["MRN", "Date of Birth"]].drop_duplicates()
     patients["Date of Birth"] = pd.to_datetime(patients["Date of Birth"])
-    patients["scr_mrn"]=patients["MRN"].apply(scramble_mrn)
+    patients["scrmrn"]=patients["MRN"].apply(scramble_mrn)
     return patients
 
 def get_visit_notes(inference_notes):
@@ -421,10 +421,10 @@ def get_visit_notes(inference_notes):
 
 
 #the notes colum does not contain the doctors notes but these are notes for the chirpp team.
-def get_visits(inference_notes, processed_notes, note_types):
-    inference_notes = inference_notes[~pd.isna(inference_notes["Note Text"])]
+def get_visits(raw_notes, processed_notes, note_types):
+    raw_notes = raw_notes[~pd.isna(raw_notes["Note Text"])]
 
-    visits = inference_notes[["CSN", "Sex", "MRN", "Arrival Date", "Date of Birth", "Arrival Time", "Postal Code",
+    visits = raw_notes[["CSN", "Sex", "MRN", "Arrival Date", "Date of Birth", "Arrival Time", "Postal Code",
                           "Chief Complaint", "Diagnosis", "Disposition", "CTAS", "Address", "City", "LOS",
                           "Province"]].drop_duplicates()
 
@@ -438,7 +438,7 @@ def get_visits(inference_notes, processed_notes, note_types):
     visits = visits.drop(columns=["Date of Birth"])
     visits["day_of_week"] = visits["Arrival Date"].dt.day_name()
 
-    for_narrative = inference_notes[inference_notes["Note Type"].isin(note_types)]
+    for_narrative = raw_notes[raw_notes["Note Type"].isin(note_types)]
     for_narrative["Note Type"] = pd.Categorical(for_narrative["Note Type"],
                                                 categories=note_types)
 
@@ -456,7 +456,7 @@ def get_visits(inference_notes, processed_notes, note_types):
 
     visits["Sex"]=visits["Sex"].apply(process_sex)
     visits["CTAS"]=visits["CTAS"].apply(process_ctas)
-    visits["notes"]=get_visit_notes(inference_notes)
+    visits["notes"]=get_visit_notes(raw_notes)
     visits=visits.merge(processed_notes[["CSN", "probs"]], how="left", on="CSN")
 
     visits = visits.rename(columns={"CSN": "csn", "Sex": "sex", "MRN": "mrn",
@@ -481,12 +481,12 @@ def get_referrals(inference_notes):
 def get_epic_notes(inference_notes):
     if "Note ID" in inference_notes.columns:
         notes_df = inference_notes[
-            ["CSN", "Note Type", "Author Type", "Author Service", "Note Text", "LINE", "Note ID"]].drop_duplicates()
+            ["CSN", "Note Type", "Author Type", "Author's Service", "Note Text", "LINE", "Note ID"]].drop_duplicates()
         notes_grouped = notes_df.groupby(["Note ID"])
 
         notes_merged = []
         for _, group in notes_grouped:
-            df = group[["CSN", "Note Type", "Author Type", "Author Service", ]].drop_duplicates()
+            df = group[["CSN", "Note Type", "Author Type", "Author's Service", ]].drop_duplicates()
             note_text = " ".join(
                 [str(x) for x in
                  group.sort_values(by=["LINE"], ignore_index=True)["Note Text"].tolist()])
@@ -500,7 +500,7 @@ def get_epic_notes(inference_notes):
 
     notes_df = notes_df.rename(columns={"CSN": "csn", "Note Type": "note_type",
                                        "Author Type": "author_type",
-                                       "Author Service": "author_service",
+                                       "Author's Service": "author_service",
                                        "Note Text": "note_text", })
     notes_df["id"]=[uuid4() for i in range(notes_df.shape[0])]
 
@@ -522,42 +522,51 @@ def get_summaries(inference_notes):
     summaries["version"]=1
     return summaries
 
+
 def get_chunked_notes(notes, inference):
     """
     :param notes: notes are the same dataframe from the get_epic_notes function,
     :param inference: chirpp.inference.Inference class instance
     :return:
     """
-    note_chunks=[]
-    for idx, note in zip(notes["id"], notes["note_text"]):
-        chunks=inference.chunk(note)
-        embeddings=inference.embed(chunks)
-        chunk_numbers=list(range(len(chunks)))
-        chunk_df=pd.DataFrame({"chunk_number":chunk_numbers, "chunk_text":chunks, "embeddings":embeddings})
-        chunk_df["note_id"]=idx
+    note_chunks = []
+    chunks = inference.chunk(notes["note_text"])
+    for idx, chunk in zip(notes["id"], chunks):
+        chunk_numbers = list(range(len(chunk)))
+        chunk_df = pd.DataFrame({"chunk_number": chunk_numbers, "chunk_text": chunk})
+        chunk_df["note_id"] = idx
         note_chunks.append(chunk_df)
 
-    note_chunks=pd.concat(note_chunks)
+    note_chunks = pd.concat(note_chunks)
+    embeddings = inference.embed(note_chunks["chunk_text"].tolist())
+    note_chunks["embeddings"] = embeddings
     return note_chunks
 
-def get_processed_notes(inference_notes):
-    processed_notes=inference_notes[["CSN", "processed_notes", "processed_embeddings"]]
+def get_processed_notes(processed_notes):
+    processed_notes=processed_notes[["CSN", "processed_notes", "processed_embeddings", "is_chirpp"]]
     processed_notes=processed_notes.rename(columns={"CSN": "csn"})
     return processed_notes
 
-def get_cases(inference_notes, visits):
-    cols=inference_notes.columns
-    cases = inference_notes[inference_notes["is_chirpp"]]
-    joined=cases.merge(visits, on="csn", how="inner")
 
-    complaints=joined["chief_complaint"]
-    diagnosis=joined["diagnosis"]
-    disposition=joined["disposition"]
-    notes=joined["notes"]
+def get_cases(processed_notes, visits):
+    cols = ['csn', 'intent', 'sub', 'sub_id',
+            'i_o', 'location', 'area', 'injury_date', 'injury_hour', 'injury_min',
+            'am_pm', 'sports_code', 'sd1', 'sd2', 'sd3', 'sd4', 'sd5', 'veh',
+            'veh_p', 'place', 'w4p', 'no1', 'bp1', 'no2', 'bp2', 'no3', 'bp3',
+            'disp']
 
-    no1s=[]
-    bp1s=[]
-    disps=[]
+    processed_notes = processed_notes.rename(columns={"CSN": "csn"})
+    cases = processed_notes[processed_notes["is_chirpp"]]
+    joined = cases.merge(visits[["csn", "chief_complaint", "diagnosis", "disposition", "notes"]], on="csn", how="inner")
+
+    complaints = joined["chief_complaint"]
+    diagnosis = joined["diagnosis"]
+    disposition = joined["disposition"]
+    notes = joined["notes"]
+
+    no1s = []
+    bp1s = []
+    disps = []
 
     for complaint, note, diag, disp in zip(complaints, notes, diagnosis, disposition):
         diag = str(diag).lower()
@@ -574,20 +583,21 @@ def get_cases(inference_notes, visits):
 
     # some manual touchups that we somewhow keep accumulating
     for i in range(joined.shape[0]):
-        if joined["i_o"][i]=="1":
-            joined["i_o"][i]="I"
-        elif joined["i_o"][i]=="2":
-            joined["i_o"][i]="O"
+        if joined["i_o"][i] == "1":
+            joined["i_o"][i] = "I"
+        elif joined["i_o"][i] == "2":
+            joined["i_o"][i] = "O"
 
-        if joined["am_pm"][i]=="1":
-            joined["am_pm"][i]="a"
-        elif joined["am_pm"][i]=="2":
-            joined["am_pm"]="p"
+        if joined["am_pm"][i] == "1":
+            joined["am_pm"][i] = "a"
+        elif joined["am_pm"][i] == "2":
+            joined["am_pm"] = "p"
 
-    joined["no1"]=no1s
-    joined["bp1"]=bp1s
-    joined["disp"]=disps
+    joined["no1"] = no1s
+    joined["bp1"] = bp1s
+    joined["disp"] = disps
 
+    # some manual touchups
     joined["area"][joined["phac_narrative"].str.contains("monkey bar")] = 59
     joined["i_o"][joined["phac_narrative"].str.contains("laminate floor")] = "I"
     joined["i_o"][joined["phac_narrative"].str.contains("snow")] = "O"
@@ -597,9 +607,9 @@ def get_cases(inference_notes, visits):
     joined["i_o"][joined["no1"] == 71] = 16
 
     joined["no2"][(joined["no1"] == 12) & (joined["bp1"] == 110)] = 41
-    joined["BP2"][(joined["no1"] == 12) & (data["bp1"] == 110)] = 135
-    joined["BP1"][joined["disp"] == 1] = 999
-    joined["NO1"][joined["dis"] == 1] = 99
+    joined["bp2"][(joined["no1"] == 12) & (joined["bp1"] == 110)] = 135
+    joined["bp1"][joined["disp"] == 1] = 999
+    joined["no1"][joined["disp"] == 1] = 99
     joined["intent"][joined["no1"] == 71] = 16
     joined["no2"][joined["diagnosis"].astype(str).str.lower().str.contains("monteggia")] = 13
     joined["no2"][joined["diagnosis"].astype(str).str.lower().str.contains("monteggia")] = 430

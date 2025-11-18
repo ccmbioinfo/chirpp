@@ -64,7 +64,7 @@ class SemanticChunking:
         """
         self.chunking_model = Model2VecEmbeddings(chunking_model)
         self.chunk_size=chunk_size
-        self.min_sentence=min_sentences
+        self.min_sentences=min_sentences
         self.threshold=threshold
 
     def chunk_notes(self, notes):
@@ -106,8 +106,8 @@ class Inference:
         """
         model_config=self.models["classification"]
         model=self._get_model(model_config)
-        probs=model(notes, model_config["labels"])
-        results=self._replace_labels(probs, model_config["labels"], model_config["cutoff"])
+        probs=model(notes)
+        results=self._replace_labels(probs, model_config["labels"], cutoff=0, return_probs=True)
         return results
 
 
@@ -140,8 +140,8 @@ class Inference:
         """
         model_config = self.models["intent"]
         model = self._get_model(model_config)
-        intents = model(notes, model_config["labels"])
-        results = self._replace_labels(intents, model_config["labels"], model_config["cutoff"])
+        intents = model(notes)
+        results = self._replace_labels(intents, model_config["labels"], model_config["cutoff"], return_probs=False)
         return results
 
     def substance(self, notes):
@@ -438,7 +438,7 @@ class Inference:
         """
         model_config = self.models["chunking"]
         model=self._get_model(model_config)
-        chunks=model.chunk(notes)
+        chunks=[model.chunk_notes(note) for note in notes]
         return chunks
 
     def embed(self, notes):
@@ -449,14 +449,7 @@ class Inference:
         """
         model_config = self.models["embeddings"]
         model=self._get_model(model_config)
-        # this is a list of lists of tuples that is an index and list in the same order as the chunks which are in the
-        # same order as the notes, each "chunk" instance is a list of strings
-        embeddings=[]
-        for text in notes:
-            text_embeddings=model.encode(text).tolist()
-            embeddings.append([(index, item) for index, item in enumerate(text_embeddings)])
-        # this will return a tensor of shape (n_chunks, embedding_dim) I need to split it
-        # and make it something postgres compatible
+        embeddings=model.encode(notes).tolist()
         return embeddings
 
 
@@ -469,10 +462,11 @@ class Inference:
         """
         if config["type"] == "classification":
             m = AutoModelForSequenceClassification.from_pretrained(config["model"],
-                                                                   config["num_labels"])
+                                                                   num_labels=config["num_labels"])
             t = AutoTokenizer.from_pretrained(config["model"], padding=config["max_length"],
                                                       truncation=config["truncation"])
-            model = pipeline("text-classification", model=m, tokenizer=t, device=self.device)
+            model = pipeline("text-classification", model=m, tokenizer=t, device=self.device,
+                            truncation=config["truncation"], max_length=config["max_length"])
         elif config["type"] == "causal":
             m=AutoModelForCausalLM.from_pretrained(config["model"], device_map="auto")
             t=AutoTokenizer.from_pretrained(config["model"], truncation=config["truncation"])
@@ -495,7 +489,7 @@ class Inference:
 
         return model
 
-    def _replace_labels(self, preds, label_dict, cutoff):
+    def _replace_labels(self, preds, label_dict, cutoff, return_probs=True):
         """
         clean up hf model inference outcomes and replace the model labels with chirpp labels
         :param preds: classification model outcomes
@@ -508,20 +502,30 @@ class Inference:
         for lab in preds:
             edited = lab["label"]
             edited = edited.replace("LABEL_", "")
-            actual=label_dict[edited]
+            actual=label_dict[int(edited)]
             edited_labels.append(int(actual))
 
         scores=[]
         for lab in preds:
             scores.append(lab["score"])
 
-        results=[]
-        for lab, scr in zip(edited_labels, scores):
-            if scr >= cutoff:
-                results.append(lab)
-            else:
-                results.append(None)
-        return results
+        if return_probs:
+            edited_probs=[]
+            for prob, lab in zip(scores, edited_labels):
+                if lab==0:
+                    edited_probs.append(1-prob)
+                else:
+                    edited_probs.append(prob)
+            return edited_probs
+
+        else:
+            results=[]
+            for lab, scr in zip(edited_labels, scores):
+                if scr >= cutoff:
+                    results.append(lab)
+                else:
+                    results.append(None)
+            return results
 
     #I've given up on llamacpp, gguf conversion is a mess, can't get it to work with cuda, I'm done.
     def _run_llama(self, config, notes):
