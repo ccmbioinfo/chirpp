@@ -53,7 +53,8 @@ i_o_codes = {"I": "indoors", "O": "outdoors"}
 
 am_pm_codes = {"a": "am", "p": "pm"}
 
-intent_codes = {}
+intent_codes = {"10": "accident", "11":"self harm", "12": "sexual", "13":"parental neglect", "14":"partner abuse",
+                "15": "assault", "16": "undetermined", "19": "legal/police/war/medical or other"}
 
 sports_codes = {"1": "organized sports", "2": "not organized sports", "3": "unknown","4": "not applicable (not a sports related injury)"}
 
@@ -62,12 +63,15 @@ safety_codes = {
 	"0": "no devices",
 	"2": "helmet",
 	"3": "sports padding",
-	"4": protective boots or other clothing,
-	"5": protective eyewear,
-	"6": seatbelt if actively being used,
-	"7": carseat,
-	"8": airbag (if deployed),
-	"10": life vest for floatation
-	"11": hard hat,
-	"12": mouthguard,
-	"19": baby gate}
+	"4": "protective boots or other clothing",
+	"5": "protective eyewear",
+	"6": "seatbelt if actively being used",
+	"7": "carseat if the patient is using it",
+	"8": "airbag (if deployed)",
+	"10": "life vest for floatation if being used",
+	"11": "hard hat",
+	"12": "mouthguard",
+	"19": "baby gate"
+}
+
+
