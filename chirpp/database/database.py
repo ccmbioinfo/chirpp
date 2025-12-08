@@ -4,6 +4,7 @@ import pandas as pd
 
 from sqlalchemy import MetaData, select, insert
 from sqlalchemy.orm import sessionmaker
+from pgvector.sqlalchemy import Vector
 
 from chirpp.postprocess.utils import process_postal
 
@@ -39,7 +40,7 @@ class DataBase:
     #TODO need version updates
     def to_db(self, patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases):
         """
-        add data to the database
+        add data to the database these datatframes are coming from the postprocess class instance
         :param patients: a pandas dataframe of patients
         :param visits: a pandas dataframe of visits
         :param referrals: a pandas dataframe of referrals
@@ -109,15 +110,32 @@ class DataBase:
 
     #this is not the most pythonic way to write sqlalchemy code, but it does take care of merging prolems and referalls just fine
     # it is unlikely that we will be querying for raw reports repeatedly to clunk the process.
-    def get_raw(self, start, end):
+    def get_raw(self, start=None, end=None, csns=None):
+        """
+        get raw data from the database
+        :param start: start date
+        :param end: end date
+        :param csns: a list of csns to get data for
+        :return: a dataframe of raw data in the same format as the raw data
+        """
         visits_table = self.tables["visits"]
         problems_table = self.tables["problems"]
         referrals_table = self.tables["referrals"]
         notes_table = self.tables["notes"]
         patients_table = self.tables["patients"]
 
-        visits = self.session.execute(select(visits_table).where((visits_table.c.arrival_date >= start) &
-                                                                 (visits_table.c.arrival_date <= end))).fetchall()
+        query = select(visits_table)
+
+        if start is not None and end is not None:
+            query = query.where((visits_table.c.arrival_date >= start) & (visits_table.c.arrival_date <= end))
+
+        if csns is not None:
+            query = query.where((visits_table.c.csn.in_(csns)))
+
+        if csns is None and (start is None or end is None):
+            raise ValueError("Either csns or start and end dates must be provided")
+
+        visits = self.session.execute(query).fetchall()
         visits = pd.DataFrame(visits)
         mrns = visits["mrn"].to_list()
         csns = visits["csn"].to_list()
@@ -189,6 +207,7 @@ class DataBase:
         visit_table = self.tables["visits"]
         problems_table = self.tables["problems"]
         patients_table = self.tables["patients"]
+        summaries_table=self.tables["summaries"]
 
         visits = self.session.execute(select(visit_table).where((visit_table.c.arrival_date >= start) &
                                                                 (visit_table.c.arrival_date <= end))).fetchall()
@@ -214,7 +233,11 @@ class DataBase:
 
         new_problems_df = pd.DataFrame({"csn": problems["csn"].drop_duplicates(), "problem_list": problems_merged})
 
-        sheet1, sheet2 = self._prepare_report(patients, visits, cases, problems)
+        summaries = self.session.execute(select(summaries_table.c.csn, summaries_table). \
+                                        where(summaries_table.c.csn.in_(visits["csn"].to_list()))).fetchall()
+        summaries = pd.DataFrame(summaries)
+
+        sheet1, sheet2 = self._prepare_report(patients, visits, cases, new_problems_df, summaries)
         return sheet1, sheet2
 
     # TODO this is not implemented yet, we need to figure out how to update the raw data, or if needed at all
@@ -278,7 +301,7 @@ class DataBase:
         previous_visits_df=pd.DataFrame({"mrn": mrns, "previous visits": visit_texts})
         return previous_visits_df
 
-    def _prepare_report(self, patients, visits, cases, problems):
+    def _prepare_report(self, patients, visits, cases, problems, summaries):
 
 
         header = ["CSN", "MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "ER Day", "INJ DATE", "Hr", "Min",
@@ -290,6 +313,7 @@ class DataBase:
         merged = visits.merge(patients, how="inner", on="mrn")
         merged = merged.merge(cases, how="left", on="csn")
         merged = merged.merge(problems, how="left", on="csn")
+        merged=merged.merge(summaries, how="left", on="csn")
         previous_visits= self.previous_visits(merged["mrn"].drop_duplicates().to_list(), merged["arrival_date"].min())
         merged = merged.merge(previous_visits, how="left", on="mrn")
 
@@ -310,7 +334,7 @@ class DataBase:
         report_df["SEX"] = merged["sex"]
         report_df["MRN"] = merged["mrn"]
         report_df["CSN"] = merged["csn"]
-        report_df["ScrMRN"] = merged["scr_mrn"]
+        report_df["ScrMRN"] = merged["scrmrn"]
         report_df["DOB"] = merged["dob"]
         report_df["ER Date"] = merged["arrival_date"]
         report_df["ER Time"] = merged["arrival_time"]
