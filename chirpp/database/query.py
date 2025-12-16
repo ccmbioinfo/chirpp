@@ -1,8 +1,11 @@
+from functools import partial
 import numpy as np
-from sqlalchemy import select, desc, asc, func, and_, select
+from sqlalchemy import desc, asc, func, and_, select
+import pandas as pd
 
 from chirpp.database.database import DataBase
-from chirpp.database.utils import find_elbow_index
+from chirpp.inference.inference import Inference
+from chirpp.database.utils import *
 
 
 # the query class here will take a dict of all the variables that are needed, there are only a few tables one would want to
@@ -34,13 +37,21 @@ from chirpp.database.utils import find_elbow_index
 # }
 
 class Query:
-    def __init__(self, database: DataBase, inference=None):
+    def __init__(self, query_dict: dict, database: DataBase, inference: Inference,
+                 cutoff_method="cum_mass", **kwargs):
         self.database = database
         self.inference = inference
         self.session = self.database.session
+        if cutoff_method=="elbow":
+            cutoff_fun=knee_threshold
+        elif cutoff_method=="cum_mass":
+            cutoff_fun=cumulative_mass_threshold
+
+        self.cutoff_method=partial(cutoff_fun, **kwargs)
+        self.query_dict=query_dict
 
     #TODO this only implements or operators for general search, we might want to add and support
-    def _keyword_search(self, positive_keywords, negative_keywords, detail_level=1, normalization=32):
+    def _keyword_search(self, positive_keywords=None, negative_keywords=None, detail_level=1, normalization=32):
         """
         perform ts vector search from the database, based on the detail level differnet tables and columns will be used
         :param positive_keywords: words to include ts vector search
@@ -59,11 +70,14 @@ class Query:
             vector_col = table.c.sk_narrative_vector
             csn_col = table.c.csn
         elif detail_level == 3:
-            table = self.database.tables["visits"]
+            table = self.database.tables["notes"]
             vector_col = table.c.notes_vector
             csn_col = table.c.csn
         else:
             raise ValueError(f"Invalid detail_level: {detail_level}")
+
+        if positive_keywords is None and negative_keywords is None:
+            return []
 
         # Construct TS query string
         # Join positive keywords with &
@@ -110,15 +124,18 @@ class Query:
         query_vec = self.inference.embed([query])[0]
 
         # Determine table and embedding column
+        #TODO need to get the max version
         if detail_level == 1:
             table = self.database.tables["summaries"]
             embedding_col = table.c.phac_embeddings
             csn_col = table.c.csn
+            get_max=True
             join_needed = False
         elif detail_level == 2:
             table = self.database.tables["processed_notes"]
             embedding_col = table.c.embeddings
             csn_col = table.c.csn
+            get_max=False
             join_needed = False
         elif detail_level == 3:
             table = self.database.tables["chunked_notes"]
@@ -127,6 +144,7 @@ class Query:
             # Or just Notes if Notes has CSN. Notes table has csn.
             # ChunkedNotes(note_id) -> Notes(id), Notes(csn)
             join_needed = True
+            get_max=False
             notes_table = self.database.tables["notes"]
         else:
             raise ValueError(f"Invalid detail_level: {detail_level}")
@@ -136,7 +154,7 @@ class Query:
         if metric == "cosine":
             dist_op = embedding_col.cosine_distance(query_vec)
             order = asc(dist_op)  # distance: lower is better
-            is_distance = True
+            is_distance = False
         elif metric == "L2":
             dist_op = embedding_col.l2_distance(query_vec)
             order = asc(dist_op)
@@ -159,7 +177,10 @@ class Query:
                 table.join(notes_table, table.c.note_id == notes_table.c.id)
             ).order_by(order).limit(limit)
         else:
-            stmt = select(csn_col, dist_op.label("score")).order_by(order).limit(limit)
+            if get_max: #TODO
+                stmt = select(csn_col, dist_op.label("score")).order_by(order).limit(limit)
+            else:
+                stmt = select(csn_col, dist_op.label("score")).order_by(order).limit(limit)
 
         results = self.session.execute(stmt).fetchall()
 
@@ -172,7 +193,7 @@ class Query:
         if len(results) < 300:
             return csns
 
-        elbow_index=find_elbow_index(np.array(scores))
+        elbow_index=self.cutoff_method(scores)
         if is_distance:
             to_ret=csns[(elbow_index + 1):]
         else:
@@ -218,27 +239,7 @@ class Query:
         else:
             return None
 
-    def _add_filters(self, filter_dict):
-        """
-        Generate a list of SQLAlchemy filter expressions from the dictionary.
-        filter_dict format: {"table_name": {"column_name": [values]}}
-        """
-        filters = []
-        for table_name, col_dict in filter_dict.items():
-            if table_name not in self.database.tables:
-                raise ValueError(f"Unknown table in filters: {table_name}")
-            table = self.database.tables[table_name]
-            for col_name, values in col_dict.items():
-                if hasattr(table.c, col_name):
-                    col = getattr(table.c, col_name)
-                    condition = self._process_filter_condition(col, values)
-                    if condition is not None:
-                        filters.append(condition)
-                else:
-                    raise ValueError(f"Unknown column in filters: {col_name} in table {table_name}")
-        return filters
-
-    def _build_query(self, keywords=None, semantic=None, filters=None):
+    def _build_query(self, keywords=None, semantic=None, filters=None, is_chirpp=True):
         """
         Orchestrate the search.
         Returns a list of CSNs.
@@ -269,7 +270,6 @@ class Query:
             return []  # No criteria
 
         if filters:
-
             filter_csns = None
 
             for table_name, col_dict in filters.items():
@@ -292,13 +292,18 @@ class Query:
 
                 if conditions:
                     stmt = stmt.where(and_(*conditions))
-                    res = self.session.execute(stmt).fetchall()
-                    current_table_csns = set(r[0] for r in res)
 
-                    if filter_csns is None:
-                        filter_csns = current_table_csns
-                    else:
-                        filter_csns = filter_csns.intersection(current_table_csns)
+                if is_chirpp:
+                    chirpp_table = self.database.tables["chirpp_report"]
+                    stmt = stmt.where(table.c.csn.in_(select(chirpp_table.c.csn)))
+
+            res = self.session.execute(stmt).fetchall()
+            current_table_csns = set(r[0] for r in res)
+
+            if filter_csns is None:
+                filter_csns = current_table_csns
+            else:
+                filter_csns = filter_csns.intersection(current_table_csns)
 
             if filter_csns is not None:
                 if csns is None:
@@ -309,36 +314,47 @@ class Query:
         return list(csns) if csns is not None else []
 
 
-    def _rerank(self, csns, query, inference):
+    def _rerank(self, csns, query, detail_level=1):
         """
-        Rerank the CSNs based on the query using the inference object.
+        rerank the results from previous step to get the most relevant notes.
+        :param csns: list of csns to get information from
+        :param query: natural language query
+        :param detail_level: what kind of notes should be used, 1 phac_summaries, 2, processsed notes 3 sk narrative
+        :param is_chirpp:
+        :return:
         """
         if not csns:
             return []
 
+        #TODO Get max version
+        if detail_level == 1: #summaries
+            table=self.database.tables["summaries"]
+            text = table.c.phac_narrative
+            csn_col = table.c.csn
+        elif detail_level==2: #
+            table = self.database.tables["processed_notes"]
+            text = table.c.note_text
+            csn_col = table.c.csn
+        elif detail_level==3:
+            table = self.database.tables["visits"]
+            text = table.c.sk_narrative
+            csn_col = table.c.csn
 
-        visits_table = self.database.tables["visits"]
-        stmt = select(visits_table.c.csn, visits_table.c.notes).where(visits_table.c.csn.in_(csns))
+        stmt=select(csn_col, text).where(csn_col.in_(csns))
         results = self.session.execute(stmt).fetchall()
-
-        # Map csn to note
-        csn_note_map = {r[0]: r[1] for r in results if r[1]}
-        valid_csns = list(csn_note_map.keys())
-        notes = [csn_note_map[csn] for csn in valid_csns]
+        notes=[item[1] for item in results]
 
         if not notes:
             return []
 
+        results=pd.DataFrame(results,columns=["csn","notes"])
         # inference.rerank returns relevance scores (list of floats)
-        scores = inference.rerank(query, notes)
-
-        # Pair csn with score
-        csn_scores = list(zip(valid_csns, scores))
-
-        # Sort by score desc
-        csn_scores.sort(key=lambda x: x[1], reverse=True)
-
-        return [x[0] for x in csn_scores]
+        scores = self.inference.rerank(query, notes)
+        results["score"]=scores
+        results=results.sort_values(by="score",ascending=False)
+        elbow_index=self.cutoff_method(np.array(results["score"]))
+        relevant_csns=results.iloc[:elbow_index,0].tolist()
+        return relevant_csns
 
     def _generate_report(self, csns):
         import pandas as pd
@@ -387,9 +403,14 @@ class Query:
         else:
             problems = pd.DataFrame(columns=["csn", "problem_list"])
 
-        return self.database._prepare_report(patients, visits, cases, problems)
+        #summaries
+        summary_table=self.database.tables["summaries"]
+        summaries=self.session.execute(select(summary_table).where(summary_table.c.csn.in_(csns))).fetchall()
+        summaries=pd.DataFrame(summaries)
+        report=self.database._prepare_report(patients, visits, cases, problems, summaries, get_previous_visits=False)
+        return report #This is a tuple first one is non-chirpp second one is chirpp
 
-    def __call__(self, search_dict):
+    def __call__(self, chirpp_only=False):
         """
         Orchestrate the query based on the search_dict. The search_dict might look something like this:
              "keywords":{
@@ -416,27 +437,20 @@ class Query:
         :param search_dict: dictionary containing search parameters
         :return: pandas dataframes for the report, this is in the same structure as the chirpp reports.
         """
-        keywords = search_dict.get("keywords")
-        description = search_dict.get("description")
-        filters = search_dict.get("filters")
-        detail_level = search_dict.get("detail_level", 1)
-        do_rerank = search_dict.get("rerank", False)
+        if "keywords" in self.query_dict.keys():
+            keywords = self.query_dict.get("keywords")
 
-        # Build semantic search dict if description is provided AND inference is available
-        semantic = None
-        if description and self.inference:
-            semantic = {
-                "description": description,
-                "detail_level": detail_level,
-                "metric": search_dict.get("metric", "cosine"),
-                "limit": search_dict.get("limit", 5000)
-            }
+        if "filters" in  self.query_dict.get("filters"):
+            filters = self.query_dict.get("filters")
 
-        # Build query to get candidate CSNs
-        csns = self._build_query(keywords=keywords, semantic=semantic, filters=filters)
+        if "semantic" in self.query_dict.keys():
+            semantic = self.query_dict.get("semantic")
 
-        # Rerank if requested and description is present
-        if do_rerank and description and self.inference:
+        do_rerank = self.query_dict.get("rerank", False)
+        csns = self._build_query(keywords=keywords, semantic=semantic, filters=filters, is_chirpp=chirpp_only)
+
+        if do_rerank:
+            description = semantic["description"]
             csns = self._rerank(csns, description, self.inference)
 
         # Generate report

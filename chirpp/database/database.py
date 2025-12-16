@@ -301,21 +301,24 @@ class DataBase:
         previous_visits_df=pd.DataFrame({"mrn": mrns, "previous visits": visit_texts})
         return previous_visits_df
 
-    def _prepare_report(self, patients, visits, cases, problems, summaries):
+    def _prepare_report(self, patients, visits, cases, problems, summaries, get_previous_visits=True):
 
 
         header = ["CSN", "MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "ER Day", "INJ DATE", "Hr", "Min",
                   "AM/PM", "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative",
                   "W4P", "NO1", "BP1", "NO2", "BP2", "NO3", "BP3", 'veh', 'veh p', "Notes", 'LOS', "DISP",
                   "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
-                  "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List", "previous visits"]
+                  "E1", "E2", "E3", "E4", "CTAS", "Chief Complaint", "Problem List"]
 
         merged = visits.merge(patients, how="inner", on="mrn")
         merged = merged.merge(cases, how="left", on="csn")
         merged = merged.merge(problems, how="left", on="csn")
         merged=merged.merge(summaries, how="left", on="csn")
-        previous_visits= self.previous_visits(merged["mrn"].drop_duplicates().to_list(), merged["arrival_date"].min())
-        merged = merged.merge(previous_visits, how="left", on="mrn")
+        if get_previous_visits:
+            header.append("previous_visits")
+            previous_visits= self.previous_visits(merged["mrn"].drop_duplicates().to_list(), merged["arrival_date"].min())
+            merged = merged.merge(previous_visits, how="left", on="mrn")
+
 
         cols_to_keep = []
         for col in merged.columns:
