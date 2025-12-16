@@ -175,6 +175,49 @@ class Cases(Base):
     version = Column(Integer, nullable=False, default=1)
 
 
-# If you look at the other branches you will see that there were more tables that were reserved for auth and logging because
-# I was planning on writing the whole ui myself. So I have removed those tables and leave it up to you, there needs to be
-# very sctrict logging of who did what and when, I will leave it up to you to decide how you want to do that.
+# Authentication table for UI access
+class Users(Base):
+    __tablename__ = "users"
+    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    password_changed = Column(Integer, nullable=False, default=0)  # 0 = not changed, 1 = changed
+    is_active = Column(Integer, nullable=False, default=1)  # 1 = active, 0 = inactive
+    created_at = Column(Date, nullable=False)
+    last_login = Column(Date, nullable=True)
+
+
+# Manager table for role-based access control
+class Manager(Base):
+    __tablename__ = "manager"
+    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
+
+
+# ManagedUsers junction table - tracks which users each manager manages
+class ManagedUsers(Base):
+    __tablename__ = "managed_users"
+    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
+    manager_id = Column(Integer, ForeignKey("manager.id"), nullable=False, index=True)
+    managed_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+
+# Logs table for tracking user actions
+class Logs(Base):
+    __tablename__ = "logs"
+    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    action = Column(String, nullable=False, index=True)  # login, raw_report, chirpp_report, query, upload_raw, upload_report
+    parameters = Column(Text, nullable=True)  # JSON string of parameters
+    timestamp = Column(Date, nullable=False, index=True)
+
+
+# Query Reports table for tracking saved query report files
+class QueryReports(Base):
+    __tablename__ = "query_reports"
+    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    file_path = Column(String, nullable=False)  # Absolute path to the saved report file
+    query_parameters = Column(Text, nullable=True)  # JSON string of query parameters
+    created_at = Column(Date, nullable=False, index=True)
+    result_count = Column(Integer, nullable=True)  # Number of results in the report

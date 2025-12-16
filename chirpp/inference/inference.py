@@ -409,7 +409,7 @@ class Inference:
                 max_length=8192 - len(prefix_tokens) - len(suffix_tokens),
                 add_special_tokens=False,
             )
-            input_ids = [prefix_tokens + inputs["input_ids"] + self.suffix_tokens]
+            input_ids = [prefix_tokens + inputs["input_ids"] + suffix_tokens]
             attention_mask = [[1] * len(input_ids[0])]
             batch = {
                 "input_ids": torch.tensor(input_ids, dtype=torch.long, device=self.device),

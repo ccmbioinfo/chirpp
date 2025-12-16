@@ -474,6 +474,7 @@ def get_visits(raw_notes, processed_notes, note_types):
 def get_referrals(inference_notes):
     referrals = inference_notes[["CSN", "Referral Order"]].dropna().drop_duplicates()
     referrals = referrals.rename(columns={"CSN": "csn", "Referral Order": "referrals"})
+    referrals = referrals[~referrals["referrals"] == ""]
     return referrals
 
 # now these are the doctor notes for a specific patient, this can be just one thing or pages and pages of notes
@@ -513,6 +514,7 @@ def get_problems(inference_notes):
     problems = problems[problems["Problem List"] != " "]
     problems["Problem List"] = problems["Problem List"].str.replace("^ ", "", regex=True)
     problems = problems.rename(columns={"CSN": "csn", "Problem List": "problem"})
+    problems=problems[~problems["problem"]==""]
     return problems
 
 
