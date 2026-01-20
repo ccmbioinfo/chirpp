@@ -41,6 +41,7 @@ def process_epic_dump(note_file, delim="|"):
     :return:
     """
     with open(note_file, "rb") as f:
+        num_skipped=0
         contents = []
         for line_num, line in enumerate(f):
             line = line.decode("ascii", errors="ignore")
@@ -54,6 +55,8 @@ def process_epic_dump(note_file, delim="|"):
                 if len(line) < len(header):
                     raise NotEnoughItemsError(
                         "there are {} items in line {} instead of {}".format(len(line), line_num, len(header)))
+                    num_skipped+=1
+                    print(num_skipped)
                 if len(line) > len(header):
                     no_text = line[:len(header) - 1]
                     text = line[(len(header) + 1 * -1):]
@@ -63,8 +66,8 @@ def process_epic_dump(note_file, delim="|"):
 
     contents = pd.DataFrame(contents, columns=header)
     contents["LOS"] = [item.total_seconds() / 3600 for item in \
-                       (pd.to_datetime(contents["Departure DateTime"]) - pd.to_datetime(
-                           contents["Arrival DateTime"])).to_list()]
+                       (pd.to_datetime(contents["Departure DateTime"], format="mixed") - pd.to_datetime(
+                           contents["Arrival DateTime"], format="mixed")).to_list()]
     contents["Arrival Time"] = pd.to_datetime(contents["Arrival DateTime"]).dt.time
     contents["MRN"] = contents["MRN"].astype(int)
     contents["CSN"] = contents["CSN"].astype(int)
