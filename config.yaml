@@ -109,7 +109,7 @@ inference:
       stop_token: "}"
     location:
       type: "causal"
-      model: "./models/location" # need to check this
+      model: "./chirpp/models/location" # need to check this
       prompt_name: "location"
       truncation: true
       max_tokens: 30

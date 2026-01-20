@@ -90,11 +90,11 @@ cutoff=get_probs(database, raw_notes["Arrival Date"].min(), #get the previous mo
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Running chirpp classifcation")
 
-processed_notes["probs"]=inference.classify(processed_notes["processed_notes"].tolist(), return_probs=True)
+processed_notes["probs"]=inference.classify(processed_notes["processed_notes"].tolist())
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing notes")
 processed_notes["phac_narrative"]=inference.summarize(processed_notes["processed_notes"].tolist())
-processed_notes["phac_embeddings"]=inference.embed(processed_notes["summary"].tolist())
+processed_notes["phac_embeddings"]=inference.embed(processed_notes["phac_narrative"].tolist())
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Calculating embeddings for semantic search")
 processed_notes["processed_embeddings"]=inference.embed(processed_notes["processed_notes"].tolist())
