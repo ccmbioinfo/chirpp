@@ -13,6 +13,7 @@ from chonkie import SemanticChunker
 from chonkie import Model2VecEmbeddings
 
 from chirpp.inference.prompts import prompt_dict
+from chirpp.inference.utils import *
 
 class NoModelError(Exception):
     pass
@@ -84,7 +85,7 @@ class Inference:
     This will perform the inference for classification and summarization
     """
 
-    def __init__(self, model_dict, device=None):
+    def __init__(self, model_dict, device=None, aggressive_cleanup=True):
         """
         init method, specify pipeline parameters for classification and summarization
         :param classification_model: model directory for the trained classification model
@@ -97,6 +98,7 @@ class Inference:
         else:
             self.device = device
         self.models=model_dict
+        self.aggressive_cleanup=aggressive_cleanup
 
     def classify(self, notes):
         """
@@ -108,6 +110,7 @@ class Inference:
         model=self._get_model(model_config)
         probs=model(notes)
         results=self._replace_labels(probs, model_config["labels"], cutoff=0, return_probs=True)
+        cleanup_model(model)
         return results
 
 
@@ -142,6 +145,7 @@ class Inference:
         model = self._get_model(model_config)
         intents = model(notes)
         results = self._replace_labels(intents, model_config["labels"], model_config["cutoff"], return_probs=False)
+        cleanup_model(model)
         return results
 
     def substance(self, notes):
@@ -416,7 +420,7 @@ class Inference:
                 "attention_mask": torch.tensor(attention_mask, dtype=torch.long, device=self.device),
             }
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 outputs = model(**batch)
                 logits = outputs.logits  # (1, L, V)
                 last_logits = logits[:, -1, :]  # (1, V)
@@ -427,6 +431,14 @@ class Inference:
                 probs = torch.softmax(two_logits, dim=0)  # (2,)
                 prob_yes = probs[1].item()
                 relevance.append(prob_yes)
+
+            if self.aggressive_cleanup:
+                del batch, outputs, logits, last_logits, score_no, score_yes, two_logits, probs
+                cleanup_cuda()
+
+        cleanup_model(model)
+        del tokenizer
+        cleanup_cuda()
 
         return relevance
 
@@ -450,6 +462,7 @@ class Inference:
         model_config = self.models["embeddings"]
         model=self._get_model(model_config)
         embeddings=model.encode(notes).tolist()
+        cleanup_model(model)
         return embeddings
 
 
@@ -527,27 +540,6 @@ class Inference:
                     results.append(None)
             return results
 
-    #I've given up on llamacpp, gguf conversion is a mess, can't get it to work with cuda, I'm done.
-    def _run_llama(self, config, notes):
-        """
-        not being used but there for future maybe
-        :param config: model config
-        :param notes: notes
-        :return: whatever the model returns, this is to be called with one of the methods above so see their description
-        """
-        model = self._get_model(config)
-        messages = [
-            {"role": "system", "content": prompt_dict["system"]},
-            {"role": "user", "content": None},
-        ]
-
-        results = []
-        for note in notes:
-            messages[1]["content"] = prompt_dict[config["prompt_name"]] + note
-            output = model.create_chat_completion(messages=messages)
-            results.append(output["choices"][0]["message"]["content"])
-
-        return results
 
     def _run_causal(self, config, notes):
         """
@@ -574,17 +566,34 @@ class Inference:
             )
             model_inputs = tokenizer([text], return_tensors="pt").to(model.device)
 
-            generated_ids = model.generate(
-                **model_inputs,
-                max_new_tokens=config["max_tokens"],
-                do_sample=True,
-                temperature=config["temperature"],
-                eos_token_id=tokenizer.eos_token_id,
-                stopping_criteria = stopping_criteria
-            )
-            output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
-            content = tokenizer.decode(output_ids, skip_special_tokens=True)
+            with torch.inference_mode():
+                gen = model.generate(
+                    **model_inputs,
+                    max_new_tokens=config["max_tokens"],
+                    do_sample=True,
+                    temperature=config["temperature"],
+                    eos_token_id=tokenizer.eos_token_id,
+                    stopping_criteria=stopping_criteria
+                )
+
+                # move to CPU before converting to list()
+            gen = gen[0].detach().cpu()
+
+            # extract only new tokens
+            new_ids = gen[len(model_inputs.input_ids[0]):].tolist()
+            content = tokenizer.decode(new_ids, skip_special_tokens=True)
+
             results.append(content)
+
+            if self.aggressive_cleanup:
+                del model_inputs, gen, new_ids
+                cleanup_cuda()
+
+        # cleanup model + tokenizer
+        cleanup_model(model)
+        del tokenizer
+        cleanup_cuda()
+
 
         return results
 

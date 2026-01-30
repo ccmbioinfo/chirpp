@@ -397,7 +397,7 @@ def get_disposition(merged_notes, disposition, no1, bp1):
             disp_code = 7
     elif disposition == "Deceased":
         disp_code = 9
-    elif "Consults" in merged_notes or "Consult Follow up" in merged_notes:
+    elif "consult" in merged_notes or "consult follow up" in merged_notes.lower():
         disp_code = 6
     else:
         disp_code = None
@@ -412,11 +412,12 @@ def get_patients(inference_notes):
     return patients
 
 def get_visit_notes(inference_notes):
-    merged_grouped = inference_notes.groupby(["CSN"])
+    merged_grouped = inference_notes.groupby("CSN")
     notes=[]
-    for _, data in merged_grouped:
-        notes.append(get_report_note(data))
-
+    for csn, data in merged_grouped:
+        notes.append({"CSN":csn, "notes":get_report_note(data)})
+    notes=pd.DataFrame(notes)
+    #notes["CSN"]=notes["CSN"].astype(int)
     return notes
 
 
@@ -443,20 +444,24 @@ def get_visits(raw_notes, processed_notes, note_types):
                                                 categories=note_types)
 
     for_narrative = for_narrative.sort_values(by="Note Type")
+    for_narrative_grouped=for_narrative.groupby("CSN")
+    narratives=[]
+    for csn, group in for_narrative_grouped:
+        narrative = []
+        for note_type, note_text in zip(group["Note Type"].tolist(), group["Note Text"].tolist()):
+            if not pd.isna(note_text):
+                narrative.append(str(note_type) + "\n\n" + str(note_text))
+        narrative = "\n\n".join(narrative)
+        narratives.append({"CSN":csn, "sk_narrative":narrative})
 
-    narrative = []
-    for note_type, note_text in zip(for_narrative["Note Type"].tolist(), for_narrative["Note Text"].tolist()):
-        if not pd.isna(note_text):
-            narrative.append(str(note_type) + "\n\n" + str(note_text))
-    narrative = "\n\n".join(narrative)
-
-    visits["sk_narrative"] = narrative
-
+    narratives=pd.DataFrame(narratives)
+    visits=visits.merge(narratives, how="inner", on="CSN")
     # some touchups requested by the chirpp team
 
     visits["Sex"]=visits["Sex"].apply(process_sex)
     visits["CTAS"]=visits["CTAS"].apply(process_ctas)
-    visits["notes"]=get_visit_notes(raw_notes)
+    notes=get_visit_notes(raw_notes)
+    visits=visits.merge(notes, how="inner", on="CSN")
     visits=visits.merge(processed_notes[["CSN", "probs"]], how="left", on="CSN")
 
     visits = visits.rename(columns={"CSN": "csn", "Sex": "sex", "MRN": "mrn",
@@ -474,7 +479,7 @@ def get_visits(raw_notes, processed_notes, note_types):
 def get_referrals(inference_notes):
     referrals = inference_notes[["CSN", "Referral Order"]].dropna().drop_duplicates()
     referrals = referrals.rename(columns={"CSN": "csn", "Referral Order": "referrals"})
-    referrals = referrals[~referrals["referrals"] == ""]
+    referrals = referrals[referrals["referrals"] != ""]
     return referrals
 
 # now these are the doctor notes for a specific patient, this can be just one thing or pages and pages of notes
@@ -514,7 +519,7 @@ def get_problems(inference_notes):
     problems = problems[problems["Problem List"] != " "]
     problems["Problem List"] = problems["Problem List"].str.replace("^ ", "", regex=True)
     problems = problems.rename(columns={"CSN": "csn", "Problem List": "problem"})
-    problems=problems[~problems["problem"]==""]
+    problems=problems[problems["problem"]!=""]
     return problems
 
 
