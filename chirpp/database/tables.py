@@ -69,7 +69,7 @@ class Summaries(Base):
     id = Column(Integer, primary_key=True)
     csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     phac_narrative = Column(String)
-    phac_embeddings = Column(Vector(1024))
+    phac_embeddings = Column(Vector(4096))
     version = Column(Integer, nullable=False)
     phac_narrative_vector = Column(TSVector(), Computed(
         "to_tsvector('english', phac_narrative)",
@@ -122,7 +122,7 @@ class ChunkedNotes(Base):
     note_id = Column(UUID(as_uuid=True), ForeignKey("notes.id"), index=True)
     chunk_number = Column(Integer)
     chunk_text = Column(Text)
-    embeddings=Column(Vector(1024))
+    embeddings=Column(Vector(4096))
 
 # this may change but unlikely, the "processed notes" are just the regular notes where we remove things that we do not care
 # about such as vitals and vaccinations etc. while they are used extensively by all the models the chirpp team do not use
@@ -132,7 +132,7 @@ class ProcessedNotes(Base):
     id=Column(Integer, autoincrement=True, primary_key=True, index=True)
     csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     note_text=Column(Text)
-    embeddings=Column(Vector(1024))
+    embeddings=Column(Vector(4096))
     note_text_ts_vector = Column(TSVector(), Computed("to_tsvector('english', note_text)",
                                                       persisted=True))
     __table_args__ = (Index('ix_note_text_ts_vector',
