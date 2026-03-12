@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy import (
     Column, ForeignKey, Integer, String,
-    Date, Text, Float, Time, types, Computed, Index
+    Date, Text, Float, Time, types, Computed, Index, Boolean
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import declarative_base
@@ -178,46 +178,40 @@ class Cases(Base):
 # Authentication table for UI access
 class Users(Base):
     __tablename__ = "users"
-    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
+    id = Column(String, primary_key=True, index=True, autoincrement=False)
+    first_name = Column(String, nullable=False, index=True)
+    last_name=Column(String, nullable=False, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
     password_changed = Column(Integer, nullable=False, default=0)  # 0 = not changed, 1 = changed
     is_active = Column(Integer, nullable=False, default=1)  # 1 = active, 0 = inactive
     created_at = Column(Date, nullable=False)
-    last_login = Column(Date, nullable=True)
-
-
-# Manager table for role-based access control
-class Manager(Base):
-    __tablename__ = "manager"
-    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
-
+    is_manager=Column(Boolean, nullable=False, default=0)
 
 # ManagedUsers junction table - tracks which users each manager manages
 class ManagedUsers(Base):
     __tablename__ = "managed_users"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    manager_id = Column(Integer, ForeignKey("manager.id"), nullable=False, index=True)
-    managed_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    manager_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    managed_user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
 
 
 # Logs table for tracking user actions
 class Logs(Base):
     __tablename__ = "logs"
-    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    id = Column(String, autoincrement=False, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     action = Column(String, nullable=False, index=True)  # login, raw_report, chirpp_report, query, upload_raw, upload_report
     parameters = Column(Text, nullable=True)  # JSON string of parameters
     timestamp = Column(Date, nullable=False, index=True)
 
-
 # Query Reports table for tracking saved query report files
-class QueryReports(Base):
-    __tablename__ = "query_reports"
+class Reports(Base):
+    __tablename__ = "reports"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     file_path = Column(String, nullable=False)  # Absolute path to the saved report file
+    type=Column(String, nullable=False) #query or report
     query_parameters = Column(Text, nullable=True)  # JSON string of query parameters
     created_at = Column(Date, nullable=False, index=True)
     result_count = Column(Integer, nullable=True)  # Number of results in the report
