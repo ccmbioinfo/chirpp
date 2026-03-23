@@ -66,7 +66,7 @@ class Visits(Base):
 # we will need to update the embeddings as well.
 class Summaries(Base):
     __tablename__ = "summaries"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     phac_narrative = Column(String)
     phac_embeddings = Column(Vector(4096))
@@ -183,8 +183,8 @@ class Users(Base):
     last_name=Column(String, nullable=False, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
-    password_changed = Column(Integer, nullable=False, default=0)  # 0 = not changed, 1 = changed
-    is_active = Column(Integer, nullable=False, default=1)  # 1 = active, 0 = inactive
+    password_changed = Column(Boolean, nullable=False, default=0)  # 0 = not changed, 1 = changed
+    is_active = Column(Boolean, nullable=False, default=1)  # 1 = active, 0 = inactive
     created_at = Column(Date, nullable=False)
     is_manager=Column(Boolean, nullable=False, default=0)
 
