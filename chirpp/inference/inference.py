@@ -113,7 +113,6 @@ class Inference:
         cleanup_model(model)
         return results
 
-
     def summarize(self, notes):
         """
         hacky llamacpp output parsing to get the summary, this has a lot more flexibility than the rest of the columns
@@ -217,7 +216,6 @@ class Inference:
                 sd4.append(s4)
                 sd5.append(s5)
         return sd1, sd2, sd3, sd4, sd5
-
 
     def io(self, notes):
         """
@@ -464,7 +462,6 @@ class Inference:
         embeddings=model.encode(notes).tolist()
         cleanup_model(model)
         return embeddings
-
 
     def _get_model(self, config):
         """

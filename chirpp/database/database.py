@@ -253,10 +253,6 @@ class DataBase:
                        "NO1", "BP1", "NO2", "BP2", "NO3", "BP3", 'DISP', 'IN', 'veh', 'veh p',
                        "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE"]
 
-        db_col_names=["csn", "injury_date", "injury_hour", "injury_minute", "am_pm", "i_o", "location", "area",
-                      "place", "w4p", "no1", "bp1", "no2", "bp2", "no3", "bp3", 'disp', 'intent', 'veh', 'veh_p',
-                      'sub', 'sub_id', 'sd1', 'sd2', 'sd3', 'sd4', 'sd5' 'sports code', 'version']
-
         data=data[cols_to_use]
         new_cols=[re.sub(r"[\\\s]+", "_", s) for s in data.columns]
         data.columns=new_cols
@@ -282,14 +278,32 @@ class DataBase:
         #updated cases here we will look at summaries as well,
         existing_cases=data[~data["CSN"].isin(new_csns)]
         if existing_cases.shape[0] > 0:
-            db_cases = chirpp_table.select().where(chirpp_table.c.csn.in_(existing_cases["CSN"].to_list()))
-            db_cases = pd.DataFrame(self.session.execute(db_cases).fetchall())
-            db_cases_hash = pd.util.hash_pandas_object(db_cases, index=False)
+            subq = (
+                select(
+                    chirpp_table.c.csn,
+                    func.max(chirpp_table.c.version).label("max_version")
+                )
+                .where(chirpp_table.c.id.in_(existing_cases["CSN"].tolist()))
+                .group_by(chirpp_table.c.id)
+                .subquery()
+            )
 
-            existing_cases_hash = pd.util.hash_pandas_object(existing_cases, index=False)
+            stmt = (
+                chirpp_table.select()
+                .join(
+                    subq,
+                    (chirpp_table.c.id == subq.c.id) &
+                    (chirpp_table.c.version == subq.c.max_version)
+                )
+            )
+            db_cases = pd.DataFrame(self.session.execute(stmt).fetchall()).rename(columns={"csn":"CSN"})
+            db_cases["db_hash"] = pd.util.hash_pandas_object(db_cases, index=False)
 
-            mask = db_cases_hash.values != existing_cases_hash.values
-            to_insert = existing_cases_hash[mask].copy()
+            existing_cases["update_hash"] = pd.util.hash_pandas_object(existing_cases, index=False)
+
+            hash_merge=db_cases[["CSN", "hash"]].merge(existing_cases[["CSN", "update_hash"]], on="CSN")
+            hash_merge=hash_merge[hash_merge["update_hash"]!=hash_merge["db_hash"]]
+            to_insert = existing_cases[existing_cases["CSN"].isin(hash_merge["CSN"].tolist())]
             for case in to_insert.itertuples():
                 insert_stmt = chirpp_table.insert().values(csn=case.CSN, injury_date=case.INJ_DATE, injury_hour=case.Hr,
                                                            injury_minute=case.Min, am_pm=case.AM_PM, i_o=case.I_O,
