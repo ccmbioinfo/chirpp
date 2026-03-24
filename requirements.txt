@@ -16,3 +16,4 @@ xlsxwriter
 accelerate
 negspacy
 cupy
+streamlit

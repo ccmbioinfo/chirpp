@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import (
-    Column, ForeignKey, Integer, String,
+    Column, ForeignKey, Integer, String, JSON,
     Date, Text, Float, Time, types, Computed, Index, Boolean
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
@@ -202,7 +202,7 @@ class Logs(Base):
     id = Column(String, autoincrement=False, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     action = Column(String, nullable=False, index=True)  # login, raw_report, chirpp_report, query, upload_raw, upload_report
-    parameters = Column(Text, nullable=True)  # JSON string of parameters
+    parameters = Column(JSON, nullable=True)  # JSON string of parameters
     timestamp = Column(Date, nullable=False, index=True)
 
 # Query Reports table for tracking saved query report files
@@ -210,8 +210,9 @@ class Reports(Base):
     __tablename__ = "reports"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
-    file_path = Column(String, nullable=False)  # Absolute path to the saved report file
+    file_path = Column(String, nullable=True)  # Absolute path to the saved report file
     type=Column(String, nullable=False) #query or report
-    query_parameters = Column(Text, nullable=True)  # JSON string of query parameters
+    query_parameters = Column(JSON, nullable=True)  # JSON string of query parameters
     created_at = Column(Date, nullable=False, index=True)
-    result_count = Column(Integer, nullable=True)  # Number of results in the report
+    status = Column(String, nullable=False)
+    logs = Column(Text, nullable=True)

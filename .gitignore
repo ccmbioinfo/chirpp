@@ -12,3 +12,4 @@ to_run
 chirpp/models
 build
 chirpp.egg-info
+.env

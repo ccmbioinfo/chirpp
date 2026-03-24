@@ -36,7 +36,6 @@ class DataBase:
         csns = [item[0] for item in self.session.execute(csns).fetchall()]
         return csns
 
-    #TODO need version updates
     def to_db(self, patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases):
         """
         add data to the database these datatframes are coming from the postprocess class instance
