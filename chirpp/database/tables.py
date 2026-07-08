@@ -1,8 +1,8 @@
 import uuid
 
 from sqlalchemy import (
-    Column, ForeignKey, Integer, String,
-    Date, Text, Float, Time, types, Computed, Index
+    Column, ForeignKey, Integer, String, JSON,
+    Date, Text, Float, Time, types, Computed, Index, Boolean
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import declarative_base
@@ -66,7 +66,7 @@ class Visits(Base):
 # we will need to update the embeddings as well.
 class Summaries(Base):
     __tablename__ = "summaries"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     csn = Column(Integer, ForeignKey("visits.csn"), index=True)
     phac_narrative = Column(String)
     phac_embeddings = Column(Vector(4096))
@@ -122,7 +122,7 @@ class ChunkedNotes(Base):
     note_id = Column(UUID(as_uuid=True), ForeignKey("notes.id"), index=True)
     chunk_number = Column(Integer)
     chunk_text = Column(Text)
-    embeddings=Column(Vector(4096))
+    embeddings=Column(Vector(1024))
 
 # this may change but unlikely, the "processed notes" are just the regular notes where we remove things that we do not care
 # about such as vitals and vaccinations etc. while they are used extensively by all the models the chirpp team do not use
@@ -173,51 +173,47 @@ class Cases(Base):
     sd5 = Column(Integer)
     sports_code = Column(Integer)
     version = Column(Integer, nullable=False, default=1)
+    generated_by=Column(String, ForeignKey("users.id"), nullable=False, index=True) #GradientGoose
 
 
 # Authentication table for UI access
 class Users(Base):
     __tablename__ = "users"
-    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
+    id = Column(String, primary_key=True, index=True, autoincrement=False)
+    first_name = Column(String, nullable=False, index=True)
+    last_name=Column(String, nullable=False, index=True)
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
-    password_changed = Column(Integer, nullable=False, default=0)  # 0 = not changed, 1 = changed
-    is_active = Column(Integer, nullable=False, default=1)  # 1 = active, 0 = inactive
+    password_changed = Column(Boolean, nullable=False, default=0)  # 0 = not changed, 1 = changed
+    is_active = Column(Boolean, nullable=False, default=1)  # 1 = active, 0 = inactive
     created_at = Column(Date, nullable=False)
-    last_login = Column(Date, nullable=True)
-
-
-# Manager table for role-based access control
-class Manager(Base):
-    __tablename__ = "manager"
-    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
-
+    is_manager=Column(Boolean, nullable=False, default=0)
 
 # ManagedUsers junction table - tracks which users each manager manages
 class ManagedUsers(Base):
     __tablename__ = "managed_users"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    manager_id = Column(Integer, ForeignKey("manager.id"), nullable=False, index=True)
-    managed_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    manager_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    managed_user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
 
 
 # Logs table for tracking user actions
 class Logs(Base):
     __tablename__ = "logs"
-    id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    id = Column(String, autoincrement=False, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     action = Column(String, nullable=False, index=True)  # login, raw_report, chirpp_report, query, upload_raw, upload_report
-    parameters = Column(Text, nullable=True)  # JSON string of parameters
+    parameters = Column(JSON, nullable=True)  # JSON string of parameters
     timestamp = Column(Date, nullable=False, index=True)
 
-
 # Query Reports table for tracking saved query report files
-class QueryReports(Base):
-    __tablename__ = "query_reports"
+class Reports(Base):
+    __tablename__ = "reports"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    file_path = Column(String, nullable=False)  # Absolute path to the saved report file
-    query_parameters = Column(Text, nullable=True)  # JSON string of query parameters
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    file_path = Column(String, nullable=True)  # Absolute path to the saved report file
+    type=Column(String, nullable=False) #query or report
+    query_parameters = Column(JSON, nullable=True)  # JSON string of query parameters
     created_at = Column(Date, nullable=False, index=True)
-    result_count = Column(Integer, nullable=True)  # Number of results in the report
+    status = Column(String, nullable=False)
+    logs = Column(Text, nullable=True)

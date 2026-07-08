@@ -530,7 +530,7 @@ def get_summaries(inference_notes):
     return summaries
 
 
-def get_chunked_notes(notes, inference):
+def get_chunked_notes(notes, inference, small=True):
     """
     :param notes: notes are the same dataframe from the get_epic_notes function,
     :param inference: chirpp.inference.Inference class instance
@@ -545,7 +545,7 @@ def get_chunked_notes(notes, inference):
         note_chunks.append(chunk_df)
 
     note_chunks = pd.concat(note_chunks)
-    embeddings = inference.embed(note_chunks["chunk_text"].tolist())
+    embeddings = inference.embed(note_chunks["chunk_text"].tolist(), small=small)
     note_chunks["embeddings"] = embeddings
     return note_chunks
 
@@ -588,17 +588,39 @@ def get_cases(processed_notes, visits):
         bp1s.append(bp1)
         disps.append(report_disposition)
 
-    # some manual touchups that we somewhow keep accumulating
+    #TODO there are some issues with this and couple of other columns that needs to be fixed here
     for i in range(joined.shape[0]):
-        if joined["i_o"][i] == "1":
-            joined["i_o"][i] = "I"
-        elif joined["i_o"][i] == "2":
-            joined["i_o"][i] = "O"
+        if joined["i_o"].iloc[i] == "1" or joined.iloc["i_o"][i] == 1:
+            joined["i_o"].iloc[i] = "I"
+        elif joined["i_o"].iloc[i] == "2" or joined.iloc["i_o"][i] == 2:
+            joined["i_o"].iloc[i] = "O"
+        elif joined["i_o"].iloc[i] == "0" or joined.iloc["i_o"][i] == 0:
+            joined["i_o"].iloc[i] = None
+        else:
+            joined["i_o"].iloc[i] = None
 
-        if joined["am_pm"][i] == "1":
+        if joined["am_pm"][i] == "1" or joined["am_pm"][i] == 1:
             joined["am_pm"][i] = "a"
-        elif joined["am_pm"][i] == "2":
+        elif joined["am_pm"][i] == "2" or joined["am_pm"][i] == 2:
             joined["am_pm"] = "p"
+
+    joined=joined["injury_min"].str.replace(".", "")
+    joined["injury_min"][joined["injury_min"] == ""] = None
+
+    joined["injury_min"][~pd.isna(joined["injury_min"])] = joined["injury_min"][
+        ~pd.isna(joined["injury_min"])].astype(int)
+
+    dates = joined["injury_date"].tolist()
+    for i in range(len(dates)):
+        if dates[i] is None:
+            continue
+        else:
+            try:
+                int(dates[i])
+            except:
+                dates[i] = None
+
+    joined["injury_date"] = dates
 
     joined["no1"] = no1s
     joined["bp1"] = bp1s

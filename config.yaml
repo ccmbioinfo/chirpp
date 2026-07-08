@@ -166,9 +166,12 @@ inference:
       min_sentences: 1
       threshold: 0.5
       model: "./chirpp/models/m2v_model"
-    embeddings:
-      type: "embeddings"
+    embedding_small:
+      type: "embedding_small"
       model: "./chirpp/models/qwen3_embedding_06B"
+    embedding_large:
+      type: "embedding_large"
+      model: "./chirpp/models/qwen3_embedding_8B"
     gguf_example: #this is just an example
       type: "gguf"
       model: "model_dir"

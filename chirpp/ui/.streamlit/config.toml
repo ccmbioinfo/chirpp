@@ -1,0 +1,25 @@
+
+#TODO just use the actual hex codes for colors
+
+[theme]
+base = "light"
+
+# Core brand-driven colors
+primaryColor = "#00B3E2"          # Cerulean accent (buttons, sliders)  — sickkids.ca brand sample
+textColor = "#254157"             # Deep blue body/heading text         — sickkids.ca brand sample
+backgroundColor = "#FFFFFF"       # Page background
+secondaryBackgroundColor = "#F6F8FB"  # Subtle canvas/containers (soft blue-tinted gray)
+
+# Typography and shape
+font = "sans serif"               # Streamlit core font stack
+# Streamlit (2025+) theming also supports extras like:
+# borderRadius, linkTextTransform, palette.* — but we’ll keep it minimal per core docs.
+
+# Optional: basic chart color seed for Vega-Lite/Altair/Plotly
+# (keeps visuals in-brand even before specifying series colors)
+[theme.palette]
+blue   = "#00B3E2"
+violet = "#254157"
+gray   = "#6B7A88"
+green  = "#2BB673"
+red    = "#D95F02"

@@ -1,12 +1,11 @@
-from datetime import datetime
+import re
 
 import pandas as pd
-
-from sqlalchemy import MetaData, select, insert
+from sqlalchemy import MetaData, select, insert, func, literal_column
 from sqlalchemy.orm import sessionmaker
-from pgvector.sqlalchemy import Vector
 
 from chirpp.postprocess.utils import process_postal
+from chirpp.database.utils import check_excel
 
 
 # a lot of the methods rely on other functions returning errors, in this instance I think it makes sense because most of
@@ -37,7 +36,6 @@ class DataBase:
         csns = [item[0] for item in self.session.execute(csns).fetchall()]
         return csns
 
-    #TODO need version updates
     def to_db(self, patients, visits, referrals, problems, notes_df, chunked_notes, summaries, processed_notes, cases):
         """
         add data to the database these datatframes are coming from the postprocess class instance
@@ -240,21 +238,114 @@ class DataBase:
         sheet1, sheet2 = self._prepare_report(patients, visits, cases, new_problems_df, summaries)
         return sheet1, sheet2
 
-    # TODO this is not implemented yet, we need to figure out how to update the raw data, or if needed at all
-    # I do not think we will ever use this
-    def update_raw(self, txt_file):
-        pass
-
-    # TODO this is not implemented yet, I need to figure out versioning
-    def update_report(self, excel_file, col_dict):
+    def update_report(self, excel_file, inference):
         """
         here the assumption is that the sheet 2 is always the cases, and it is always the second sheet.
         :param excel_file:
         :return:
         """
-        pass
+        summaries_table = self.tables["summaries"]
+        chirpp_table = self.tables["chirpp_report"]
 
-    #TODO I need to have a date selection I cannot get visits from the future
+        data=check_excel(excel_file)
+        cols_to_use = ["CSN", "INJ DATE", "Hr", "Min", "AM/PM", "I/O", "LOCATION", "AREA", "PLACE", "W4P",
+                       "NO1", "BP1", "NO2", "BP2", "NO3", "BP3", 'DISP', 'IN', 'veh', 'veh p',
+                       "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE"]
+
+        data=data[cols_to_use]
+        new_cols=[re.sub(r"[\\\s]+", "_", s) for s in data.columns]
+        data.columns=new_cols
+
+        #these are new cases that the model have missed
+        new_csns=[csn for csn in data["CSN"].tolist() if csn not in self.csns]
+
+        #insert these
+        if len(new_csns)>0:
+            new_cases=data[data["CSN"].isin(new_csns)]
+            for case in new_cases.itertuples():
+                insert_stmt=chirpp_table.insert().values(csn=case.CSN, injury_date=case.INJ_DATE, injury_hour=case.Hr,
+                                             injury_minute=case.Min, am_pm=case.AM_PM, i_o=case.I_O,
+                                             location=case.LOCATION, area=case.AREA, place=case.PLACE,
+                                             w4p=case.W4P, no1=case.NO1, bp1=case.BP1, no2=case.NO2, bp2=case.BP2,
+                                             no3=case.NO3, bp3=case.BP3, disp=case.DISP, intent=case.IN, sub=case.sub,
+                                             sub_id=case.subID, veh=case.veh, veh_p=case.veh_p, sd1=case.sd1, sd2=case.sd2,
+                                             sd3=case.sd3, sd4=case.sd4, sd5=case.sd5, sports_code=case.SPORTS_CODE,
+                                             version=1)
+                self.session.execute(insert_stmt)
+            self.session.commit()
+
+        #updated cases here we will look at summaries as well,
+        existing_cases=data[~data["CSN"].isin(new_csns)]
+        if existing_cases.shape[0] > 0:
+            subq = (
+                select(
+                    chirpp_table.c.csn,
+                    func.max(chirpp_table.c.version).label("max_version")
+                )
+                .where(chirpp_table.c.id.in_(existing_cases["CSN"].tolist()))
+                .group_by(chirpp_table.c.id)
+                .subquery()
+            )
+
+            stmt = (
+                chirpp_table.select()
+                .join(
+                    subq,
+                    (chirpp_table.c.id == subq.c.id) &
+                    (chirpp_table.c.version == subq.c.max_version)
+                )
+            )
+            db_cases = pd.DataFrame(self.session.execute(stmt).fetchall()).rename(columns={"csn":"CSN"})
+            db_cases["db_hash"] = pd.util.hash_pandas_object(db_cases, index=False)
+
+            existing_cases["update_hash"] = pd.util.hash_pandas_object(existing_cases, index=False)
+
+            hash_merge=db_cases[["CSN", "hash"]].merge(existing_cases[["CSN", "update_hash"]], on="CSN")
+            hash_merge=hash_merge[hash_merge["update_hash"]!=hash_merge["db_hash"]]
+            to_insert = existing_cases[existing_cases["CSN"].isin(hash_merge["CSN"].tolist())]
+            for case in to_insert.itertuples():
+                insert_stmt = chirpp_table.insert().values(csn=case.CSN, injury_date=case.INJ_DATE, injury_hour=case.Hr,
+                                                           injury_minute=case.Min, am_pm=case.AM_PM, i_o=case.I_O,
+                                                           location=case.LOCATION, area=case.AREA, place=case.PLACE,
+                                                           w4p=case.W4P, no1=case.NO1, bp1=case.BP1, no2=case.NO2,
+                                                           bp2=case.BP2,
+                                                           no3=case.NO3, bp3=case.BP3, disp=case.DISP, intent=case.IN,
+                                                           sub=case.sub,
+                                                           sub_id=case.subID, veh=case.veh, veh_p=case.veh_p,
+                                                           sd1=case.sd1, sd2=case.sd2,
+                                                           sd3=case.sd3, sd4=case.sd4, sd5=case.sd5,
+                                                           sports_code=case.SPORTS_CODE,
+                                                           version=case.version+1)
+                self.session.execute(insert_stmt)
+            self.session.commit()
+
+        db_summary_data=summaries_table(summaries_table.c.csn,
+                                        summaries_table.c.phac_narrative,
+                                        func.max(summaries_table.c.version)).\
+            where(summaries_table.c.csn.in_(existing_cases["CSN"].to_list())).group_by(summaries_table.c.csn)
+
+        #check summaries
+        db_summary_data=pd.DataFrame(self.session.execute(db_summary_data).fetchall())
+        new_summary_data=existing_cases[["CSN", "PHAC Narrative"]].rename(columns={"PHAC Narrative": "phac_narrative_new",
+                                                                              "CSN":"csn"})
+        merged_summaries=new_summary_data.merge(db_summary_data, how="left", on="csn")
+        diff_summaries=merged_summaries[merged_summaries["phac_narrative_new"]!=merged_summaries["phac_narrative"]]
+
+        for item in diff_summaries.itertuples():
+            item_embeddings=inference.embed(item.phac_narrative_new)
+            insert_stmt=summaries_table.insert().values(
+                csn=item.csn,
+                phac_narrative=item.phac_narrative_new,
+                phac_embeddings=item_embeddings,
+                version=item.version+1
+            )
+            self.session.execute(insert_stmt)
+        self.session.commit()
+        self.csns
+        self.mrns
+
+        return None
+
     def previous_visits(self, mrns, end_date=None):
         """
         get previous visits for a patient
@@ -280,31 +371,18 @@ class DataBase:
 
         previous_visits=previous_visits.merge(summaries, on="csn")
 
-        visit_texts = []
-        for mrn in mrns:
-            patient_visits = previous_visits[previous_visits["mrn"] == mrn]
-            if patient_visits.shape[0] == 0:
-                visit_texts.append(None)
-            elif patient_visits.shape[0] == 1:
-                visit_texts.append(
-                    "\n".join([f"{str(patient_visits["csn"].iloc[0])} @ {patient_visits["arrival_date"].iloc[0]}",
-                               patient_visits["phac_narrative"].iloc[0]]))
-            else:
-                combined_texts = []
-                for csn, arrival_date, text in zip(patient_visits["csn"].tolist(),
-                                                   patient_visits["arrival_date"].tolist(),
-                                                   patient_visits["phac_narrative"].tolist()):
-                    visit_text = "\n".join([f"{str(csn)} @ {arrival_date}", text])
-                    combined_texts.append(visit_text)
-                visit_texts.append("\n\n".join(combined_texts))
+        previous_visits["merged_col"]=previous_visits['mrn'].astype(str).fillna('') + ":" +\
+                    previous_visits['csn'].astype(str).fillna('') + "\n" + \
+                    previous_visits['phac_narrative'].astype(str).fillna('')
 
-        previous_visits_df=pd.DataFrame({"mrn": mrns, "previous visits": visit_texts})
-        return previous_visits_df
+        previous_visits = previous_visits.groupby('mrn')['previous_visits'].agg('\n'.join).reset_index()
+        previous_visits = previous_visits[["mrn", "previous_visits"]]
+        return previous_visits
 
     def _prepare_report(self, patients, visits, cases, problems, summaries, get_previous_visits=True):
 
 
-        header = ["CSN", "MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "ER Day", "INJ DATE", "Hr", "Min",
+        header = ["CSN", "MRN", "ScrMRN", "DOB", "SEX", "AGE", "POSTAL", "ER Time", "ER Date", "ER Day", "INJ DATE", "Hr", "Min",
                   "AM/PM", "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative",
                   "W4P", "NO1", "BP1", "NO2", "BP2", "NO3", "BP3", 'veh', 'veh p', "Notes", 'LOS', "DISP",
                   "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
@@ -314,6 +392,7 @@ class DataBase:
         merged = merged.merge(cases, how="left", on="csn")
         merged = merged.merge(problems, how="left", on="csn")
         merged=merged.merge(summaries, how="left", on="csn")
+
         if get_previous_visits:
             header.append("previous_visits")
             previous_visits= self.previous_visits(merged["mrn"].drop_duplicates().to_list(), merged["arrival_date"].min())
@@ -335,6 +414,7 @@ class DataBase:
         report_df = pd.DataFrame(columns=header)
         report_df["POSTAL"] = merged["postal_code"].apply(process_postal)
         report_df["SEX"] = merged["sex"]
+        report_df["AGE"] = merged["age"]
         report_df["MRN"] = merged["mrn"]
         report_df["CSN"] = merged["csn"]
         report_df["ScrMRN"] = merged["scrmrn"]
@@ -378,6 +458,7 @@ class DataBase:
         report_df["PLACE"] = merged["place"]
         report_df["veh"] = merged["veh"]
         report_df["veh p"] = merged["veh_p"]
+        report_df["previous_visits"]= merged["previous_visits"]
 
         sheet2 = report_df[report_df["chirpp"] == True]
         sheet1 = report_df[pd.isna(report_df["chirpp"])]
