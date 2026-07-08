@@ -346,7 +346,6 @@ class DataBase:
 
         return None
 
-
     def previous_visits(self, mrns, end_date=None):
         """
         get previous visits for a patient
@@ -383,7 +382,7 @@ class DataBase:
     def _prepare_report(self, patients, visits, cases, problems, summaries, get_previous_visits=True):
 
 
-        header = ["CSN", "MRN", "ScrMRN", "DOB", "SEX", "POSTAL", "ER Time", "ER Date", "ER Day", "INJ DATE", "Hr", "Min",
+        header = ["CSN", "MRN", "ScrMRN", "DOB", "SEX", "AGE", "POSTAL", "ER Time", "ER Date", "ER Day", "INJ DATE", "Hr", "Min",
                   "AM/PM", "I/O", "LOCATION", "AREA", "PLACE", "Diagnosis", "SK Narrative", "PHAC Narrative",
                   "W4P", "NO1", "BP1", "NO2", "BP2", "NO3", "BP3", 'veh', 'veh p', "Notes", 'LOS', "DISP",
                   "IN", "sub", "subID", 'sd1', "sd2", "sd3", "sd4", "sd5", "SPORTS CODE",
@@ -393,6 +392,7 @@ class DataBase:
         merged = merged.merge(cases, how="left", on="csn")
         merged = merged.merge(problems, how="left", on="csn")
         merged=merged.merge(summaries, how="left", on="csn")
+
         if get_previous_visits:
             header.append("previous_visits")
             previous_visits= self.previous_visits(merged["mrn"].drop_duplicates().to_list(), merged["arrival_date"].min())
@@ -414,6 +414,7 @@ class DataBase:
         report_df = pd.DataFrame(columns=header)
         report_df["POSTAL"] = merged["postal_code"].apply(process_postal)
         report_df["SEX"] = merged["sex"]
+        report_df["AGE"] = merged["age"]
         report_df["MRN"] = merged["mrn"]
         report_df["CSN"] = merged["csn"]
         report_df["ScrMRN"] = merged["scrmrn"]
@@ -457,6 +458,7 @@ class DataBase:
         report_df["PLACE"] = merged["place"]
         report_df["veh"] = merged["veh"]
         report_df["veh p"] = merged["veh_p"]
+        report_df["previous_visits"]= merged["previous_visits"]
 
         sheet2 = report_df[report_df["chirpp"] == True]
         sheet1 = report_df[pd.isna(report_df["chirpp"])]

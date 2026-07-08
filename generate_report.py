@@ -85,6 +85,7 @@ inference=Inference(inference_config["models"], device=device)
 # are different so it will need addional arguments and that will make it more complicated. The code here I think is very
 # readable and easy to follow just not very DRY
 
+#TODO this is also not good, need to figure out a better way
 cutoff=get_probs(database, raw_notes["Arrival Date"].min(), #get the previous month
                  inference_config["pos_complaints"], time_delta=inference_config["time_delta"])
 
@@ -94,10 +95,10 @@ processed_notes["probs"]=inference.classify(processed_notes["processed_notes"].t
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Summarizing notes")
 processed_notes["phac_narrative"]=inference.summarize(processed_notes["processed_notes"].tolist())
-processed_notes["phac_embeddings"]=inference.embed(processed_notes["phac_narrative"].tolist())
+processed_notes["phac_embeddings"]=inference.embed(processed_notes["phac_narrative"].tolist(), small=False)
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Calculating embeddings for semantic search")
-processed_notes["processed_embeddings"]=inference.embed(processed_notes["processed_notes"].tolist())
+processed_notes["processed_embeddings"]=inference.embed(processed_notes["processed_notes"].tolist(), small=False)
 
 
 # fill in columns because only chirpp cases will be inferred
@@ -132,7 +133,16 @@ processed_notes["bp3"]=None
 processed_notes["disp"]=None
 
 # determine which notes are chirpp
-processed_notes["is_chirpp"]=processed_notes["probs"]>=cutoff
+is_chirpp=[False]*processed_notes.shape[0]
+for i in range(len(is_chirpp)):
+    if processed_notes["probs"].iloc[i]>=cutoff:
+        is_chirpp[i]=True
+    elif processed_notes["chief_complaint"].iloc[i] in inference_config["pos_complaints"]:
+        is_chirpp[i] = True
+    else:
+        continue
+
+processed_notes["is_chirpp"]=is_chirpp
 notes_to_process=processed_notes["processed_notes"][processed_notes["is_chirpp"]].tolist()
 
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Classiftying intent")
@@ -141,7 +151,7 @@ intents=inference.intent(notes_to_process)
 print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Extracting substance use information")
 subs, sub_ids=inference.substance(notes_to_process)
 
-print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Extracting safety devices information and sports involvement")
+print("[" + datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "] " + "Extracting safety device information and sports involvement")
 sd1, sd2, sd3, sd4, sd5 = inference.safety(notes_to_process)
 sports=inference.sports(notes_to_process)
 

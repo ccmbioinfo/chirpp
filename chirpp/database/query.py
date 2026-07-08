@@ -76,37 +76,27 @@ class Query:
         else:
             raise ValueError(f"Invalid detail_level: {detail_level}")
 
-        if positive_keywords is None and negative_keywords is None:
+        if not positive_keywords and not negative_keywords:
             return []
 
-        # Construct TS query string
-        # Join positive keywords with &
-        pos_query = " | ".join(positive_keywords) if positive_keywords else ""
+        parts = []
+        if positive_keywords:
+            # OR semantics
+            parts.append(" OR ".join(positive_keywords))
+        if negative_keywords:
+            # NOT semantics
+            parts.append("NOT (" + " OR ".join(negative_keywords) + ")")
 
-        # Join negative keywords with & !
-        neg_query = " | ".join([f"!{k}" for k in negative_keywords]) if negative_keywords else ""
-
-        if pos_query and neg_query:
-            query_str = f"({pos_query}) & ({neg_query})"
-        elif pos_query:
-            query_str = pos_query
-        elif neg_query:
-            query_str = neg_query
-        else:
-            return []
-
-        # Build query
-        ts_query = func.to_tsquery('english', query_str)
-
-        # Rank with normalization
+        query_str = " AND ".join(parts)
+        ts_query = func.websearch_to_tsquery('english', query_str)
         rank = func.ts_rank(vector_col, ts_query, normalization)
-
-        stmt = select(csn_col).where(vector_col.op('@@')(ts_query)).order_by(desc(rank))
-
-        # Execute
+        stmt = (
+            select(csn_col)
+            .where(vector_col.op('@@')(ts_query))
+            .order_by(desc(rank))
+        )
         results = self.session.execute(stmt).fetchall()
         return [r[0] for r in results]
-
     def _semantic_search(self, query, detail_level=1, metric="cosine", limit=5000):
         """
         perfrom semantic search from the database, based on the detail level different tables and columns will be used.
@@ -313,7 +303,7 @@ class Query:
 
         return list(csns) if csns is not None else []
 
-
+    #TODO this should not have a hard cutoff but a boolean flag and a sorted list csn, score, bool
     def _rerank(self, csns, query, detail_level=1):
         """
         rerank the results from previous step to get the most relevant notes.

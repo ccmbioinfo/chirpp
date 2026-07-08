@@ -1,167 +1,359 @@
-# These will be used in filter section need to create pydantic section and load them
-# in columns dynamically
+import os
+import hashlib
+import uuid
+from datetime import datetime
+from dataclasses import dataclass
+from functools import wraps, cached_property
+import json
 
-SYMBOL_MAP = {"gt": ">", "lt": "<", "gte": ">=", "lte": "<=", "eq": "=", "neq": "≠", "like": "Contains",
-              "not_like": "Does Not Contain", "in": "In List", "not_in": "Not In List"}
+import bcrypt
 
-TABLE_CONFIG = {"visits": {"label": "Visits", "columns": {
-    "sex": {"label": "Sex", "type": "categorical", "values": ["M", "F"], "code_labels": {"M": "Male", "F": "Female"},
-            "comparators": ["eq", "neq"]},
-    "age": {"label": "Age", "type": "integer", "comparators": ["gt", "lt", "gte", "lte", "eq", "neq"], },
-    "arrival_date": {"label": "Arrival Date", "type": "date", "comparators": ["gt", "lt", "gte", "lte", "eq", "neq"], },
-    "ctas": {"label": "CTAS", "type": "categorical", "values": [1, 2, 3, 4, 5],
-             "code_labels": {1: "Life or limb threatening", 2: "Potential thread to life or limb",
-                             3: "Could progress to serious conditions", 4: "Conditions that require intervention",
-                             5: "Stable Non-urgent"}, "comparators": ["gt", "lt", "gte", "lte", "eq", "neq"], },
-    "los": {"label": "Length of Stay", "type": "numerical", "comparators": ["gt", "lt", "gte", "lte"], },
-    "diagnosis": {"label": "Diagnosis", "type": "categorical", "comparators": ["like", "not_like"], },
-    "chief_complaint": {"label": "Chief Complaint", "type": "categorical", "comparators": ["like", "not_like"], },
-    "disposition": {"label": "Disposition", "type": "categorical", "comparators": ["like", "not_like"], }}},
-                "problems": {"label": "Problems", "columns": {
-                    "problem": {"label": "Problem", "type": "categorical", "comparators": ["like", "not_like"], }}},
+from sqlalchemy import create_engine, select
 
-                "chirpp_report": {"label": "CHIRPP Cases", "columns": {
-                    "intent": {"label": "Intent", "type": "categorical", "values": [10, 11, 12, 13, 14, 15, 16, 19],
-                        "code_labels": {10: "Accident", 11: "Self Harm", 12: "Sexual Abuse/Assault",
-                                        13: "Parental Abuse/Neglect", 14: "Partner Abuse", 15: "Assault (Non-Sexual)",
-                                        16: "Undetermined", 19: "Police/Other/Medical"}, "comparators": ["eq", "neq"]},
-                    "am_pm": {"label": "AM or PM", "type": "categorical", "values": ["a", "p"],
-                        "code_labels": {"a": "AM", "p": "PM"}, "comparators": ["eq", "neq"]},
-                    "injury_date": {"label": "Injury Date", "type": "integer",
-                        "comparators": ["gt", "lt", "gte", "lte", "eq", "neq"], },
-                    "i_o": {"label": "Inside/Outside", "type": "categorical", "values": [1, 2],
-                        "code_labels": {1: "Inside", "2": "Outside"}, "comparators": ["eq", "neq"], },
-                    "location": {"label": "Location", "type": "categorical",
-                        "values": [11, 12, 13, 14, 19, 21, 22, 23, 24, 29, 31, 32, 33, 39, 41, 42, 43, 44, 45, 49, 51,
-                                   52, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 79, 81, 82, 91, 92, 93, 94, 95, 96,
-                                   97, 98, 109, 111, 112, 119, 121, 131, 141, 142, 143, 144, 145, 149, 150],
-                        "code_labels": {11: "patients' own farm house",
-                            21: "farm house belonging to someone else (including relatives)",
-                            12: "patients' own home apartment, condo",
-                            22: "home, apartment or condo belonging to someone else",
-                            13: "dormitory, school boarding or hostel where the patient is staying",
-                            23: "someone else's dormitory, school boading or hostel",
-                            14: "patient's trailer home or motorhome", 24: "someone else's trailer home or motor home",
-                            19: "patients' cottage", 29: "someone else's cottage",
-                            31: "institutional home, shelter, group home or halfway home",
-                            32: "retirement or nursing home", 33: "prison, jail or other detention centers",
-                            39: "other residential institutions for example ronald mac donald house",
-                            41: "daycare or preschool", 42: "school or kindergarden",
-                            43: "tertiary adult edication for examplel university or military college",
-                            44: "public administration building like city hall, fire/police station, courthouse",
-                            45: "place for arts like museum, performance halls, concert hall, library",
-                            49: "other kinds of institutions like church, military base", 51: "hospital",
-                            52: "community health center, detox center, dental office, doctor's office (not in a hospital)",
-                            61: "amusement park", 62: "public park",
-                            63: "aquatic center, like a water park or swimming pool", 64: "stadium or arena for sports",
-                            65: "community center",
-                            66: "fitness center, gym (not in school), martial arts center/dojo, dance studio, ballet school",
-                            67: "race track for motor sports and horseback",
-                            68: "other land based sports facility like golf couse, skate park (not ice skating), rodeo grounds",
-                            69: "water based sports like yatch club, marina, fishing lodge, kayak club, rowing club",
-                            70: "snow/ice based sports facility like ski resort, ski cabin",
-                            71: "skate park for ice skating",
-                            79: "facility for recration like arcade, bowling alley, bingo hall", 81: "highway",
-                            82: "other roads like alley, lane, bus stop",
-                            91: "shop, shopping mall or other commerce centers", 92: "restaurants, bars, coffee shops",
-                            93: "entertainment place like bar, night club, casino, strip club",
-                            94: "airport, train/bus/subway stattion ferry terminal",
-                            95: "service or gas station for automotives", 96: "warehouse", 97: "office building",
-                            98: "hotel/motel/bed and breakfast, resort",
-                            109: "other commercial and trade area like bank, laundromat, funeral home, veterenerian office",
-                            141: "remote undevloped place, swamp, snowmobile track",
-                            142: "railway tracks not including station", 143: "camp grounds, trailer park",
-                            144: "onboard a vehicle like plane, train, bus, ship, ferry",
-                            111: "construction/demolotion site", 112: "factory, mill, manufacturing site",
-                            119: "other industrial area", 121: "mine, oil or gas well, quarry, sandpit",
-                            131: "farm, barn, coop but exclduing the farmhouse"}, "comparators": ["in", "not_in"]},
-                    "area": {"label": "Area", "type": "categorical",
-                        "values": [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 31, 32, 33, 34, 35, 36, 41, 42, 43,
-                                   44, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 71, 72, 73, 74, 75, 76, 77,
-                                   78, 81, 82, 83, 84, 85, 91, 92, 99],
-                        "code_labels": {11: "bathroom, toilet, change room", 12: "bedroom",
-                            13: "classroom, daycare indoors", 14: "dorm room",
-                            15: "hall, foyer, waiting room, emergency room", 16: "kitchen", 17: "laundry room",
-                            18: "dining area, cafeteria", 19: "living room, rec room, den", 20: "office",
-                            21: "basement", 22: "spectator area in a church, theatre",
-                            31: "garage, carport, parking lot", 32: "workshop",
-                            33: "agricultural buildings like silo or piggery", 34: "stable, barn", 35: "shed",
-                            36: "other specialized buildings like greenhouse", 41: "escalator, elevator", 42: "stairs",
-                            43: "porch, deck balcony, veranda", 44: "roof",
-                            51: "paved road (assume paved unless specified)", 52: "unpaved road", 53: "driveway",
-                            54: "parking lot", 55: "sidewalk, bus stop", 56: "median, strip, traffic island",
-                            57: "tunnel, trench, ditch", 58: "bike path", 59: "playground",
-                            60: "garden, backyard, school yard", 61: "pasture, field, other outdoor animal area",
-                            62: "cliff, rock face", 63: "trails", 71: "gym, fitness room, yoga studio",
-                            72: "sports field, track, including indoor spaces", 73: "tennis, squash etc. court",
-                            74: "swimming pool", 75: "ice rink", 76: "concrete rink for skating",
-                            77: "locker room, change room", 78: "splash pad", 81: "beach, shore, riverbank", 82: "dam",
-                            83: "river, lake, creek, pond", 84: "sea, ocean", 85: "wharf, dock pier",
-                            91: "other exterior space, crawlspace, under porch, veranda",
-                            92: "other interior space like storage, attic etc."}, "comparators": ["in", "not_in"]},
-                    "place": {"label": "Place", "type": "categorical", "comparators": ["like", "not_like"], },
-                    "sd_all": {  # This key doesn't exist in DB, it's our virtual key
-                        "label": "Safety Devices", "type": "categorical",
-                        "virtual_group": ["sd1", "sd2", "sd3", "sd4", "sd5"],
-                        "values": [-1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 19],
-                        "code_labels": {-1: "Unknown", 0: "No Device", 2: "Helmet", 3: "Sports Padding",
-                                        4: "Protective Clothing or Boots", 5: "Eyewear", 6: "Seatbelt", 7: "Carseat",
-                                        8: "Airbag (Deployed)", 9: "Not Specified", 10: "Life Jacket", 11: "Hard Hat",
-                                        12: "Mouth Guard", 19: "Baby Gate", }, "comparators": ["in", "not_in"]},
-                    "sports_code": {"label": "Sports Code", "type": "categorical", "values": [1, 2, 3, 4],
-                        "code_labels": {1: "yes", 2: "no", 3: "unknown", 4: "not applicable"},
-                        "comparators": ["in", "not_in", "eq", "neq"]},
+from chirpp.database.database import DataBase
+from chirpp.database.query import Query
+from chirpp.ui.utils.errors import *
 
-                    "no_all": {"label": "Nature of Injury", "type": "categorical",
-                        "virtual_group": ["no1", "no2", "no3"],
-                        "values": [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 31, 32, 33,
-                                   34, 35, 36, 37, 41, 42, 43, 50, 51, 52, 53, 60, 70, 75, 76, 77, 99],
-                        "code_labels": {10: "superficial bruises, abrasions", 11: "open wound including minor cuts",
-                            12: "fracture", 13: "dislocation", 14: "sprain or strain", 15: "injury to nerve",
-                            16: "injury to blood vessel like hemorrhage", 17: "injury to muscle or tendon live rupture",
-                            18: "crushing injury", 19: "traumatic amputation",
-                            20: "external burn or corrosion (no eye inj)", 21: "frostbite",
-                            22: "insect, animal or human bite", 23: "electrical injury",
-                            24: "eye injury including burn or corrosion", 25: "dental injury",
-                            26: "injury to internal organs excluding inner ear", 27: "soft tissue injury",
-                            31: "foreign body in external eys", 32: "foreign body in ear canal",
-                            33: "foreing body in nose", 34: "foreign body in respiratory tract excluding nose",
-                            35: "foreign body in digestive tract", 36: "foreign body in genital, unrinary tract",
-                            37: "foreing body in soft tissue including splinters", 41: "minor head injury",
-                            42: "concussion", 43: "intracranial injury", 50: "poisoning or toxic effect",
-                            51: "drowning, near drowning or immersion", 52: "asphixia or other treath to breathing",
-                            53: "overexertion, heat/cold stress", 60: "multiple injuries of more than one nature",
-                            70: "no injuries", 75: "pulled elbow", 99: "unspecified or no injury",
-                            76: "internal causitic burn", 77: "penetrating wound like stabbing or gunshot"},
-                        "comparators": ["in", "not_in"]},
-                    "bp_all": {"label": "Body Parts", "type": "categorical", "comparators": ["in", "not_in"],
-                        "values": [110, 120, 130, 135, 140, 141, 210, 220, 230, 240, 250, 310, 315, 321, 322, 324, 325,
-                                   330, 410, 415, 420, 430, 440, 450, 460, 470, 510, 520, 530, 540, 550, 560, 570, 700,
-                                   900, 999],
-                        "code_labels": {110: "head including skull and scalp", 120: "face", 130: "internal mouth",
-                                        135: "specific head injury", 140: "neck excluding spinal cord",
-                                        141: "internal organs in the neck like trachea", 210: "cervical spine",
-                                        220: "thoracic spine", 230: "lumber spine", 240: "sacrum or coccyx",
-                                        250: "other on unspecified spine",
-                                        310: "thorax, ribs, heart, lungs, armpits, trachea",
-                                        315: "upper back excluding scapula",
-                                        321: "abdomen including all abdominal organs", 322: "lower back",
-                                        323: "pelvis including bladder, bottocks, genitals",
-                                        324: "perineum, external genitalia, scrotum", 325: "groin",
-                                        330: "unpecified back", 410: "shoulders, including scapula", 415: "clavicle",
-                                        420: "upper arm", 430: "elbow", 440: "forearm", 450: "wrist", 460: "hand",
-                                        470: "finger or thumb", 510: "hip, including neck of femur",
-                                        520: "thigh, including femur", 530: "knee", 540: "lower leg", 550: "ankle",
-                                        560: "foot", 570: "toe", 700: "multiple injuries spanning multipe sections",
-                                        900: "no specific body part including systemic injuries",
-                                        999: "unspecified body part or no injury"}}, "sub": {"label" "Substance"
-                                                                                             "type": "categorical",
-                        "values": [1, 2], "code_labels": {1: "No substances involved", 2: "Substances involved", },
-                        "comparators": ["eq", "neq"]},
-                    "sub_id": {"label": "Substance ID", "type": "categorical", "comparators": ["like", "not_like"]},
-                    "disp": {"label": "Disposition", "type": "categorical", "values": [1, 2, 3, 4, 5, 6, 7, 8, 9],
-                        "code_labels": {1: "LAMA", 2: "Advice Only", 3: "Treatment in ER w/ PRN follow-up",
-                                        4: "Observation in ER w/ PRN follow-up", 5: "Observation in ER w/ follow-up",
-                                        6: "Treatment with referral for injury", 7: "Admission for injury",
-                                        8: "Admission for other reasons", 9: "DOA or died in ED"},
-                        "comparators": ["eq", "neq", "in", "not_in"]}}}}
+database=st.session_state.database
+
+@dataclass(frozen=True)
+class Database:
+    user:str
+    pwd:str
+    port:str
+    host: str
+    db_name:str
+
+    @property
+    def conn_str(self):
+        conn_str=f'postgresql+psycopg2://{self.user}:{self.pwd}@{self.host}:{self.port}/{self.db_name}'
+        return conn_str
+
+    @cached_property
+    def engine(self):
+        engine=create_engine(self.conn_str)
+        return engine
+
+    @cached_property
+    def connection(self):
+        db=DataBase(self.engine)
+        return db
+
+@dataclass
+class User:
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+    password_hash: str #this is the hash
+    created_at: datetime
+    is_manager: bool
+    is_active: bool
+    password_changed: bool
+
+    #This is becoming a property because we do not need to call it unless the user clicks on the admin page
+    # then we will generate it on the spot
+    @property
+    def manages(self):
+        manages_table=database.metadata.tables['managed_users']
+        users_table = database.metadata.tables['users']
+        stmt = (
+            select(
+                users_table.c.id,
+                users_table.c.first_name,
+                users_table.c.last_name,
+                users_table.c.email,
+                users_table.c.is_active
+            )
+            .join(manages_table, users_table.c.id == manages_table.c.managed_user_id)
+            .where(manages_table.c.manager_id == self.id)
+        )
+        # 3. Execute
+        result = database.session.execute(stmt).fetchall()
+
+        if len(result)==0:
+            return None
+        else:
+            return result
+
+
+    @staticmethod
+    def _check_credentials(email: str, password: str):
+        users_table=database.metadata.tables['users']
+        stmt=users_table.select().where(users_table.c.email==email)
+        user_info=database.session.execute(stmt).fetchall()
+
+        if len(user_info)==0:
+            return None
+
+        if len(user_info)>1:
+            raise TooManyUsersError()
+
+        pw_hash=user_info[0].password_hash
+        correct_pw=bcrypt.checkpw(password.encode(), pw_hash.encode())
+
+        if correct_pw:
+            return user_info[0]
+        else:
+            return None
+
+    @classmethod
+    def from_db(cls, email, password):
+        info=cls._check_credentials(email, password, database)
+        if info is None:
+            return None
+        elif not info.is_active:
+            return None
+        else:
+            return cls(id=info.id, email=info.email, first_name=info.first_name, last_name=info.last_name,
+                       password_hash=info.password_hash, created_at=info.created_at, password_changed=info.password_changed,
+                       is_manager=info.is_manager, is_active=info.is_active)
+
+    def change_password(self, new_password):
+        users_table = database.metadata.tables['users']
+        new_hash=bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+        if new_hash==self.password_hash:
+            new_hash=bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+
+        if not self.password_changed:
+            update_pw = users_table.update().where(users_table.c.id == self.id).values(password_hash=new_hash,
+                                                                                       password_changed=True)
+        else:
+            update_pw=users_table.update().where(users_table.c.id == self.id).values(password=new_hash)
+
+        database.session.execute(update_pw)
+        database.session.commit()
+        self.password_hash=new_hash
+        if not self.password_changed:
+            self.password_changed = True
+
+    def change_email(self, new_email):
+        users_table = database.metadata.tables['users']
+        update_email = users_table.update().where(users_table.c.id == self.id).values(email=new_email)
+        database.session.execute(update_email)
+        database.session.commit()
+        self.email=new_email
+
+    def add_user(self, first, last, email, database):
+        if self.is_manager:
+            user_id=uuid.uuid4().hex
+            users_table = database.metadata.tables['users']
+            managers_table = database.metadata.tables['managed_users']
+
+            pwd=hashlib.md5(first.encode()).hexdigest()
+            pwd_hashed=bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode()
+            user_stms=users_table.insert().values(id=user_id, first_name=first, last_name=last, email=email,
+                                        password_hash=pwd_hashed, is_active=True,
+                                        password_changed=False, created_at=datetime.now(),
+                                        is_manager=False)
+            manager_stmt=managers_table.insert().values(manager_id=self.id, managed_user_id=user_id)
+            database.session.execute(user_stms)
+            database.session.execute(manager_stmt)
+            database.session.commit()
+            return pwd
+        else:
+            raise RoleError(f"User {self.id} is not a manager")
+
+    def deactivate_user(self, user_id):
+        users_table = database.metadata.tables['users']
+
+        managed_ids = [item["user_id"] for item in self.manages]
+        if user_id in managed_ids:
+            users_table.update().where(users_table.c.id == self.id).values(is_active=False)
+        else:
+            raise RoleError(f"User {id} is not one of the subordinates")
+
+    def promote(self, manager_id, managed_ids):
+        users_table = database.metadata.tables['users']
+        managers_table=database.metadata.tables['managed_users']
+
+        managed_ids = [id for id in  managed_ids if id in self.manages["id"]]
+        if manager_id in managed_ids:
+            user_stmt=users_table.update().where(users_table.c.id == self.id).values(is_manager=True)
+            database.session.execute(user_stmt)
+            database.session.commit()
+            for user in managed_ids:
+                if user in managed_ids:
+                    sub_stmt=managers_table.insert().values(manager_id=manager_id, managed_user_id=user)
+                    database.session.execute(sub_stmt)
+                    database.session.commit()
+                else:
+                    raise RoleError(f"User {user} is not one of the subordinates")
+        else:
+            raise RoleError(f"User {id} is not one of the subordinates")
+
+    def demote(self, user_id):
+        users_table = database.metadata.tables['users']
+        managers_table = database.metadata.tables['managed_users']
+        user_stmt = users_table.update().where(users_table.c.id == user_id).values(is_manager=False)
+        database.session.execute(user_stmt)
+        database.session.commit()
+
+        managers_table.delete().where(managers_table.c.manager_id == user_id)
+        database.session.execute(managers_table)
+        database.session.commit()
+
+    # This one is for admins to reset password when a user forgets
+    def reset_password(self, user_id):
+        if self.is_manager:
+            users_table = database.metadata.tables['users']
+            pwd = hashlib.md5(user_id.encode()).hexdigest()
+            pwd_hashed = bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode()
+            user_stms = users_table.update().values(id=user_id, password_hash=pwd_hashed, 
+                                                    password_changed=False)
+            database.session.execute(user_stms)
+            database.session.commit()
+            return pwd
+        else:
+            raise RoleError("You are not a manager")
+
+
+@dataclass
+class Report:
+    user_id: str
+    type: str
+    file_path: str | None
+    parameters: dict | None
+    created_at: datetime
+    status: str
+    logs: str
+
+    
+    @classmethod
+    def generate_report(cls, start, end, app_root, user, include_chirpp=True):
+        now=datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        try:
+            file_path=os.path.join(os.path.abspath(app_root), f"{user.id}_{now}_report.xls")
+            sheet1, sheet1 = database.get_report(start, end)
+        except:
+
+        pass
+    
+    
+
+
+
+    @classmethod
+    def search_db(cls):
+        pass
+
+
+@dataclass
+class UserReports:
+    user_id: str
+
+    @property
+    def queries(self):
+        pass
+
+    @property
+    def reports(self):
+        pass
+
+    @cached_property
+    def managed_reports(self):
+        pass
+
+    @cached_property
+    def managed_queries(self):
+        pass
+
+
+
+def track_activity(action, user_id, database):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            result = func(*args, **kwargs)
+            log = Log(
+                user_id=user_id,
+                action=action,
+                timestamp=datetime.utcnow(),
+                parameters={
+                    "args": [str(a) for a in args],
+                    "kwargs": {k: str(v) for k, v in kwargs.items()},
+                },
+            )
+            log.to_db(database)
+            return result
+        return wrapper
+    return decorator
+
+# using uuids here so I don't have to worry about running returning
+@dataclass
+class Log:
+    user_id: str
+    action: str
+    timestamp: datetime
+    parameters: dict | None = None
+    def to_db(self, database):
+        logs_table = database.metadata.tables["logs"]
+        stmt = logs_table.insert().values(
+            id=str(uuid.uuid4()),
+            user_id=self.user_id,
+            action=self.action,
+            parameters=json.dumps(self.parameters) if self.parameters else None,
+            timestamp=self.timestamp,
+        )
+        with database.engine.begin() as conn:
+            conn.execute(stmt)
+
+
+@dataclass
+class UserLogs:
+    user_id: str
+    logs: list[Log]
+
+    @classmethod
+    def from_db(cls, user_id, database):
+        logs_table = database.metadata.tables["logs"]
+
+        stmt = logs_table.select().where(
+            logs_table.c.user_id == user_id
+        ).order_by(logs_table.c.timestamp.desc())
+
+        with database.engine.begin() as conn:
+            rows = conn.execute(stmt).fetchall()
+
+        logs = [
+            Log(
+                user_id=row.user_id,
+                action=row.action,
+                timestamp=row.timestamp,
+                parameters=json.loads(row.parameters) if row.parameters else None,
+            )
+            for row in rows
+        ]
+
+        return cls(user_id=user_id, logs=logs)
+
+
+@dataclass
+class ManagerLogs:
+    manager_id: str
+    logs: list[Log]
+
+    @classmethod
+    def from_db(cls, manager_id, database):
+
+        logs_table = database.metadata.tables["logs"]
+        users_table = database.metadata.tables["users"]
+        managed_users_table = database.metadata.tables["managed_users"]
+
+        managed_users_stmt=managed_users_table.select(managed_users_table.c.managed_user_id).\
+            where(managed_users_table.c.user_id == manager_id).subquery()
+
+        stmt=logs_table.select().where(users_table.c.id.in_(managed_users_stmt.c.managed_user_id))
+        rows=database.session.execute(stmt).fetchall()
+
+        logs = [
+            Log(
+                user_id=row.user_id,
+                action=row.action,
+                timestamp=row.timestamp,
+                parameters=json.loads(row.parameters) if row.parameters else None,
+            )
+            for row in rows
+        ]
+
+        return cls(manager_id=manager_id, logs=logs)

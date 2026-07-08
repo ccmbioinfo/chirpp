@@ -1,7 +1,5 @@
 import re
 import json
-import pandas as pd
-import torch
 
 from transformers import (pipeline, AutoModelForSequenceClassification,
                           AutoTokenizer, AutoModelForCausalLM,
@@ -18,7 +16,6 @@ from chirpp.inference.utils import *
 class NoModelError(Exception):
     pass
 
-
 def get_probs(database, end_date, complaint_filter, time_delta=30):
     """
     get the chirpp dynamic cutoff based on the previous month
@@ -28,10 +25,11 @@ def get_probs(database, end_date, complaint_filter, time_delta=30):
     :param time_delta: how many days back to look, default is 30
     :return: float of the min probability for the given chief complaints in the previous month based on the distilbert model
     """
-    #TODO this is not correct, need to add an end date filter as well
+    comp = ", ".join(f"'{c}'" for c in complaint_filter)
+
     start_date=pd.to_datetime(end_date)+pd.Timedelta(days=time_delta)
     probs = pd.read_sql(
-        f'select min(probs) from visits where chief_complaint in {','.join(complaint_filter)} and arrival_date >= \'{start_date} and arrival_date <= \'{end_date}\'',
+        f"select min(probs) from visits where chief_complaint in ({comp}) and arrival_date >= '{start_date}' and arrival_date <= '{end_date}'",
         con=database.engine)
 
     return probs[0]
@@ -279,7 +277,8 @@ class Inference:
         for res in outputs:
             try:
                 d=res.split(":")[1].replace("}", "")
-                if d=="99":
+                d=int(d)
+                if d==99:
                     d=None
             except:
                 d=None
@@ -451,13 +450,16 @@ class Inference:
         chunks=[model.chunk_notes(note) for note in notes]
         return chunks
 
-    def embed(self, notes):
+    def embed(self, notes, small=True):
         """
         embed notes, this applies to note chunks, summaries and processed notes
         :param notes: notes
         :return: list of floats
         """
-        model_config = self.models["embeddings"]
+        if small:
+            model_config = self.models["embedding_small"]
+        else:
+            model_config = self.models["embedding_large"]
         model=self._get_model(model_config)
         embeddings=model.encode(notes).tolist()
         cleanup_model(model)
@@ -486,7 +488,9 @@ class Inference:
                                    chunk_size=config["chunk_size"],
                                    min_sentences=config["min_sentences"],
                                    threshold=config["threshold"])
-        elif config["type"] == "embeddings":
+        elif config["type"] == "embeddings_small":
+            model=SentenceTransformer(config["model"])
+        elif config["type"] == "embeddings_large":
             model=SentenceTransformer(config["model"])
         elif config["type"]=="gguf":
             # I'm not importing anything this has been a nightmare to set up and it's still not reliable especially
@@ -590,7 +594,6 @@ class Inference:
         cleanup_model(model)
         del tokenizer
         cleanup_cuda()
-
 
         return results
 

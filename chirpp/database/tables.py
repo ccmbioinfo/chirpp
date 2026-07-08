@@ -122,7 +122,7 @@ class ChunkedNotes(Base):
     note_id = Column(UUID(as_uuid=True), ForeignKey("notes.id"), index=True)
     chunk_number = Column(Integer)
     chunk_text = Column(Text)
-    embeddings=Column(Vector(4096))
+    embeddings=Column(Vector(1024))
 
 # this may change but unlikely, the "processed notes" are just the regular notes where we remove things that we do not care
 # about such as vitals and vaccinations etc. while they are used extensively by all the models the chirpp team do not use
@@ -173,6 +173,7 @@ class Cases(Base):
     sd5 = Column(Integer)
     sports_code = Column(Integer)
     version = Column(Integer, nullable=False, default=1)
+    generated_by=Column(String, ForeignKey("users.id"), nullable=False, index=True) #GradientGoose
 
 
 # Authentication table for UI access
