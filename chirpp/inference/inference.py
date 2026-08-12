@@ -488,10 +488,10 @@ class Inference:
                                    chunk_size=config["chunk_size"],
                                    min_sentences=config["min_sentences"],
                                    threshold=config["threshold"])
-        elif config["type"] == "embeddings_small":
-            model=SentenceTransformer(config["model"])
-        elif config["type"] == "embeddings_large":
-            model=SentenceTransformer(config["model"])
+        elif config["type"] == "embedding_small":
+            model=SentenceTransformer(config["model"], model_kwargs={"torch_dtype": torch.bfloat16})
+        elif config["type"] == "embedding_large":
+            model=SentenceTransformer(config["model"], model_kwargs={"torch_dtype": torch.bfloat16})
         elif config["type"]=="gguf":
             # I'm not importing anything this has been a nightmare to set up and it's still not reliable especially
             # with cuda I'm leaving this here for completeness sake but I will not be using it.

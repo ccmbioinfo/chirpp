@@ -66,13 +66,13 @@ class DataBase:
             new_patients = patients[~patients["mrn"].isin(self.mrns)]
             if not new_patients.empty:
                 conn.execute(insert(patients_table), new_patients.to_dict(orient="records"))
-                self.get_mrns()
+                self.mrns
 
             # visits
             new_visits = visits[~visits["csn"].isin(self.csns)]
             if not new_visits.empty:
                 conn.execute(insert(visits_table), new_visits.to_dict(orient="records"))
-                self.get_csns()
+                self.csns
 
             # referrals
             if not referrals.empty:
