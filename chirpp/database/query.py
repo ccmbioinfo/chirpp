@@ -19,7 +19,7 @@ from chirpp.database.utils import *
 #         "detail_level": 1
 #     },
 #     "semantic":{
-#         "description":"find all instances of playground accidents resulting in injury",
+#         "description":"",
 #         "detail_level":2,
 #         "metric":"cosine",
 #         "limit":5000
@@ -34,6 +34,11 @@ from chirpp.database.utils import *
 #             "am_pm":{"eq":"1"},
 #         }
 #     }
+#     "rerank":{
+#       "prompt":"""Find the most relevant notes for the following query: {query}. The notes are as follows: {notes}.
+#       Return a score between 0 and 1 for each note, where 1 is most relevant and 0 is least relevant. Return the scores
+#       in a list in the same order as the notes.""",
+#       "detail_level":2
 # }
 
 class Query:
@@ -111,7 +116,10 @@ class Query:
 
         # Embed the query
         # Assuming self.inference.embed returns a list of embeddings
-        query_vec = self.inference.embed([query])[0]
+        if detail_level in [1,2]:
+            query_vec = self.inference.embed([query], small=False)[0]
+        else:
+            query_vec = self.inference.embed([query], small=True)[0]
 
         # Determine table and embedding column
         #TODO need to get the max version
@@ -304,7 +312,7 @@ class Query:
         return list(csns) if csns is not None else []
 
     #TODO this should not have a hard cutoff but a boolean flag and a sorted list csn, score, bool
-    def _rerank(self, csns, query, detail_level=1):
+    def _rerank(self, csns, prompt, detail_level=1):
         """
         rerank the results from previous step to get the most relevant notes.
         :param csns: list of csns to get information from
@@ -338,8 +346,9 @@ class Query:
             return []
 
         results=pd.DataFrame(results,columns=["csn","notes"])
+        results["prompts"]=[prompt.format(note) for note in results["notes"].tolist()]
         # inference.rerank returns relevance scores (list of floats)
-        scores = self.inference.rerank(query, notes)
+        scores = self.inference.rerank(results["prompts"].tolist(), notes)
         results["score"]=scores
         results=results.sort_values(by="score",ascending=False)
         elbow_index=self.cutoff_method(np.array(results["score"]))
@@ -429,22 +438,32 @@ class Query:
         """
         if "keywords" in self.query_dict.keys():
             keywords = self.query_dict.get("keywords")
+        else:
+            keywords=None
 
         if "filters" in  self.query_dict.get("filters"):
             filters = self.query_dict.get("filters")
+        else:
+            filters=None
 
         if "semantic" in self.query_dict.keys():
             semantic = self.query_dict.get("semantic")
+        else:
+            semantic=None
 
-        do_rerank = self.query_dict.get("rerank", False)
+        if "rerank" in self.query_dict.keys():
+            do_rerank=True
+        else:
+            do_rerank=False
+
         csns = self._build_query(keywords=keywords, semantic=semantic, filters=filters, is_chirpp=chirpp_only)
 
         if do_rerank:
-            description = semantic["description"]
-            csns = self._rerank(csns, description, self.inference)
+            csns = self._rerank(csns, self.query_dict["rerank"]["prompt"], self.query_dict["rerank"]["detail_level"])
 
         # Generate report
         return self._generate_report(csns)
+
 
 
 
