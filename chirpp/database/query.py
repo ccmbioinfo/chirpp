@@ -441,7 +441,7 @@ class Query:
         else:
             keywords=None
 
-        if "filters" in  self.query_dict.get("filters"):
+        if "filters" in  self.query_dict.keys():
             filters = self.query_dict.get("filters")
         else:
             filters=None
