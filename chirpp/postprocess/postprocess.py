@@ -36,8 +36,7 @@ class PostProcess:
     def process(self, inference):
         patients, visits, referrals, problems, notes_df, chunked_notes=self.process_raw_sections(inference)
         summaries, processed_notes, cases=self.process_inference_sections(visits)
-
-        patients = patients.rename(columns={"MRN": "mrn"})
+        patients=patients[~patients["mrn"].duplicated()]
         visits = visits[visits["mrn"].isin(patients["mrn"])]
         referrals = referrals[referrals["csn"].isin(visits["csn"])]
         problems = problems[problems["csn"].isin(visits["csn"])]
