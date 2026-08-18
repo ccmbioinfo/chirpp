@@ -409,6 +409,7 @@ def get_patients(inference_notes):
     patients = inference_notes[["MRN", "Date of Birth"]].drop_duplicates()
     patients["Date of Birth"] = pd.to_datetime(patients["Date of Birth"])
     patients["scrmrn"]=patients["MRN"].apply(scramble_mrn)
+    patients = patients.rename(columns={"MRN": "mrn"})
     return patients
 
 def get_visit_notes(inference_notes):
@@ -550,8 +551,9 @@ def get_chunked_notes(notes, inference, small=True):
     return note_chunks
 
 def get_processed_notes(processed_notes):
-    processed_notes=processed_notes[["CSN", "processed_notes", "processed_embeddings", "is_chirpp"]]
-    processed_notes=processed_notes.rename(columns={"CSN": "csn"})
+    processed_notes=processed_notes[["CSN", "processed_notes", "processed_embeddings"]]
+    processed_notes=processed_notes.rename(columns={"CSN": "csn", "processed_notes":"note_text",
+                                                    "processed_embeddings":"embeddings"})
     return processed_notes
 
 
