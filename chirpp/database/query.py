@@ -1,7 +1,6 @@
 from functools import partial
-import numpy as np
+
 from sqlalchemy import desc, asc, func, and_, select
-import pandas as pd
 
 from chirpp.database.database import DataBase
 from chirpp.inference.inference import Inference
@@ -102,6 +101,7 @@ class Query:
         )
         results = self.session.execute(stmt).fetchall()
         return [r[0] for r in results]
+
     def _semantic_search(self, query, detail_level=1, metric="cosine", limit=5000):
         """
         perfrom semantic search from the database, based on the detail level different tables and columns will be used.
@@ -200,7 +200,6 @@ class Query:
         # Include the elbow point
         return to_ret
 
-    #TODO this only performs and filter we need to add or support as well, it can be mitigated by keeping intervals wide
     def _process_filter_condition(self, col, value):
         """
         process the filter condition for a single column based on the value dict

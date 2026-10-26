@@ -67,7 +67,7 @@ class Visits(Base):
 class Summaries(Base):
     __tablename__ = "summaries"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    csn = Column(Integer, ForeignKey("visits.csn"), index=True)
+    csn = Column(Integer, ForeignKey("visits.csn"), index=True, unique=True)
     phac_narrative = Column(String)
     phac_embeddings = Column(Vector(4096))
     version = Column(Integer, nullable=False)
@@ -130,7 +130,7 @@ class ChunkedNotes(Base):
 class ProcessedNotes(Base):
     __tablename__="processed_notes"
     id=Column(Integer, autoincrement=True, primary_key=True, index=True)
-    csn = Column(Integer, ForeignKey("visits.csn"), index=True)
+    csn = Column(Integer, ForeignKey("visits.csn"), index=True, unique=True)
     note_text=Column(Text)
     embeddings=Column(Vector(4096))
     note_text_ts_vector = Column(TSVector(), Computed("to_tsvector('english', note_text)",
@@ -144,7 +144,7 @@ class ProcessedNotes(Base):
 class Cases(Base):
     __tablename__ = "chirpp_report"
     id = Column(Integer, autoincrement=True, primary_key=True, index=True)
-    csn = Column(Integer, ForeignKey("visits.csn"), index=True)
+    csn = Column(Integer, ForeignKey("visits.csn"), index=True, unique=True)
     injury_date = Column(Integer, index=True)
     injury_hour = Column(Integer)
     injury_min = Column(Integer)
